@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(**/*credentials*)",
+      "Bash(rm -rf *)"
+    ],
+    "ask": [
+      "Bash(alembic upgrade *)",
+      "Bash(psql * -c DROP*)",
+      "Bash(psql * -c TRUNCATE*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '핵심 원칙: (1) spec 판정은 evaluators/*.py의 순수 함수로만 (2) LLM은 OOS/근접 시에만 설명 생성 (3) 새 기능은 FEATURE_REGISTRY 등록 방식으로, run_rag_judgement 본체는 수정하지 않음'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-secrets.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-evaluator-purity.sh" },
+          { "type": "command", "command": "command -v ruff >/dev/null 2>&1 && jq -r '.tool_input.file_path // empty' | grep '\\.py$' | xargs -r ruff format || true" }
+        ]
+      }
+    ]
+  }
+}

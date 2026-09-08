@@ -1,0 +1,23 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: asmr
+      POSTGRES_PASSWORD: asmr
+      POSTGRES_DB: asmr_rag
+    ports:
+      # 호스트 5432(네이티브 PostgreSQL)/5433(다른 프로젝트의 supabase 컨테이너)와 충돌해
+      # 5434로 매핑한다(로컬 확인됨). 다른 값이 필요하면 이 값과 .env의 DATABASE_URL을 함께 바꿀 것.
+      - "5434:5432"
+    volumes:
+      - asmr_pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asmr -d asmr_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  asmr_pgdata:
