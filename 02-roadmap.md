@@ -17,7 +17,7 @@
 | Phase 0 — 하네스 & 스펙 확정 | 안전장치부터 세팅, 미확정 스펙 확인 | Session 0 | `settings.json`(hooks+permissions) | ✅ 완료 |
 | Phase 1 — UC1 임베딩 동기화 | DB polling 기반 백그라운드 임베딩 파이프라인 구축 | Session 1~5 | `schema-migrator`, `db-reader` | ✅ 완료 |
 | Phase 2 — UC1 판정 서비스 | `/query/history` 엔드포인트 구현 | Session 6~8 | `rag-core-builder` | ✅ 완료 |
-| Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ⬜ 예정 |
+| Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ✅ 완료 |
 | Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ⬜ 예정 |
 | Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ⬜ 예정 |
 | Phase 6 — 기능 확장 (Focal Curve/Final XY/ID Dump) | Feature Registry 패턴으로 3개 기능 추가 | Session 13~19 | `/add-feature` 스킬, worktree 병렬 서브에이전트 | ⬜ 예정 |
@@ -52,12 +52,13 @@
 - **완료 기준**: 실제 과거 이슈로 수동 검증 통과 (FR-1.3) — 로컬 Ollama(bge-m3/llama3)로 시드 로그(반복되는 overlay 정렬 실패 시나리오)를 백필 후 `/query/history` 호출해 근거 chunk 기반 결론·권고조치가 생성되고 `judgements`에 저장됨을 확인
 - **참고**: 사내 Gemma4-260430 API 스펙은 여전히 TBD(§11) — `LLM_PROVIDER=internal`로 전환만 하면 되도록 어댑터 뒤에 숨겨둠(Phase 0 스펙 확정과 무관하게 UC1 파이프라인 자체는 완결)
 
-### Phase 3 — UC2 Spec Evaluator (Session 9)
+### Phase 3 — UC2 Spec Evaluator (Session 9) ✅ 완료
 
 - **목표**: "판정과 설명의 분리" 원칙이 코드로 처음 구현되는 시점 — 프로젝트에서 **가장 먼저 강제해야 할 규칙**
 - **선행조건**: 없음 (Phase 1/2와 독립적으로 시작 가능)
-- **산출물**: `rag/spec_evaluator.py` + 경계값(LSL/USL 일치, LSL==USL 스펙 폭 0) 유닛테스트
-- **완료 기준**: 유닛테스트 100% 통과, `enforce-evaluator-purity.sh` hook이 실제로 LLM 호출 삽입을 차단하는 것을 확인 (FR-2.2, NFR-1)
+- **산출물**: `rag/spec_evaluator.py`(`SpecResult`, `SpecEvaluator` Protocol, `evaluate_spec()`, `GenericSpecEvaluator`) + `tests/test_spec_evaluator.py`(경계값: LSL/USL 일치, LSL==USL 스펙 폭 0 포함 12개 테스트)
+- **완료 기준**: 유닛테스트 100% 통과(12/12), `enforce-evaluator-purity.sh` hook이 실제로 LLM 호출 삽입을 차단하는 것을 확인 (FR-2.2, NFR-1)
+- **참고**: 검증 중 hook이 `jq` 의존성 때문에 이 개발 환경(jq 미설치 Git Bash)에서 조용히 no-op 되는 것을 발견 — `enforce-evaluator-purity.sh`에 jq 부재 시 grep/sed로 파싱하는 폴백을 추가해 실제로 차단되는 것을 확인함. `run_spec_check()`(DB 저장 + 조건부 RAG 호출)은 순수성 유지를 위해 의도적으로 Phase 4로 위임함
 
 ### Phase 4 — UC2 API 클라이언트 + RAG 결합 (Session 10~11)
 
@@ -106,7 +107,7 @@
 - [x] Phase 0 — 하네스 세팅 완료
 - [x] Phase 1 — UC1 임베딩 동기화
 - [x] Phase 2 — UC1 판정 서비스 (`/query/history`)
-- [ ] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
+- [x] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
 - [ ] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
 - [ ] Phase 5 — 평가/튜닝
 - [ ] Phase 6 — Focal Curve / Final XY / ID Dump
