@@ -12,7 +12,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
 @pytest_asyncio.fixture
 async def db_pool():
     from config import Settings
-    from workers.embedding_sync_poller import create_pool
+    from db.repo import create_pool
 
     try:
         pool = await create_pool(Settings(_env_file=None, database_url=TEST_DATABASE_URL))
@@ -22,7 +22,9 @@ async def db_pool():
 
     try:
         async with pool.acquire() as conn:
-            await conn.execute("TRUNCATE logs_raw, log_chunks RESTART IDENTITY CASCADE")
+            await conn.execute(
+                "TRUNCATE logs_raw, log_chunks, spec_evaluations, judgements RESTART IDENTITY CASCADE"
+            )
         yield pool
     finally:
         await pool.close()

@@ -15,8 +15,8 @@
 | Phase | 목표 | 관련 세션(`CLAUDE.md`) | 관련 하네스 요소 | 상태 |
 |---|---|---|---|---|
 | Phase 0 — 하네스 & 스펙 확정 | 안전장치부터 세팅, 미확정 스펙 확인 | Session 0 | `settings.json`(hooks+permissions) | ✅ 완료 |
-| Phase 1 — UC1 임베딩 동기화 | DB polling 기반 백그라운드 임베딩 파이프라인 구축 | Session 1~5 | `schema-migrator`, `db-reader` | ⬜ 예정 |
-| Phase 2 — UC1 판정 서비스 | `/query/history` 엔드포인트 구현 | Session 6~8 | `rag-core-builder` | ⬜ 예정 |
+| Phase 1 — UC1 임베딩 동기화 | DB polling 기반 백그라운드 임베딩 파이프라인 구축 | Session 1~5 | `schema-migrator`, `db-reader` | ✅ 완료 |
+| Phase 2 — UC1 판정 서비스 | `/query/history` 엔드포인트 구현 | Session 6~8 | `rag-core-builder` | ✅ 완료 |
 | Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ⬜ 예정 |
 | Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ⬜ 예정 |
 | Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ⬜ 예정 |
@@ -44,12 +44,13 @@
 - **산출물**: `db/schema.sql`, `config.py`, `clients/embedding_client.py`, `workers/chunker.py`, `workers/embedding_sync_poller.py`, `scripts/backfill_embeddings.py`
 - **완료 기준**: 소량 데이터로 폴링 워커를 강제 중단 후 재시작해도 중복 임베딩이 생기지 않음을 확인 (요구사항 FR-1.2)
 
-### Phase 2 — UC1 판정 서비스 (Session 6~8)
+### Phase 2 — UC1 판정 서비스 (Session 6~8) ✅ 완료
 
 - **목표**: `/query/history` 엔드포인트로 자연어 질의 → 하이브리드 검색 → LLM 판정까지 end-to-end 동작
 - **선행조건**: Phase 1 완료, Gemma4-260430 API 스펙 확인
-- **산출물**: `clients/llm_client.py`, `rag/retriever.py`, `rag/prompt.py`, `rag/core.py`, `api/routes_history.py`
-- **완료 기준**: 실제 과거 이슈로 수동 검증 통과 (FR-1.3)
+- **산출물**: `clients/llm_client.py`, `rag/retriever.py`, `rag/prompt.py`, `rag/core.py`, `api/routes_history.py`, `api/deps.py`, `models/schemas.py`, `main.py`, `db/repo.py`(신규 — `create_pool`/`save_judgement` 단일화)
+- **완료 기준**: 실제 과거 이슈로 수동 검증 통과 (FR-1.3) — 로컬 Ollama(bge-m3/llama3)로 시드 로그(반복되는 overlay 정렬 실패 시나리오)를 백필 후 `/query/history` 호출해 근거 chunk 기반 결론·권고조치가 생성되고 `judgements`에 저장됨을 확인
+- **참고**: 사내 Gemma4-260430 API 스펙은 여전히 TBD(§11) — `LLM_PROVIDER=internal`로 전환만 하면 되도록 어댑터 뒤에 숨겨둠(Phase 0 스펙 확정과 무관하게 UC1 파이프라인 자체는 완결)
 
 ### Phase 3 — UC2 Spec Evaluator (Session 9)
 
@@ -103,8 +104,8 @@
 ## 4. 마일스톤 체크리스트
 
 - [x] Phase 0 — 하네스 세팅 완료
-- [ ] Phase 1 — UC1 임베딩 동기화
-- [ ] Phase 2 — UC1 판정 서비스 (`/query/history`)
+- [x] Phase 1 — UC1 임베딩 동기화
+- [x] Phase 2 — UC1 판정 서비스 (`/query/history`)
 - [ ] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
 - [ ] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
 - [ ] Phase 5 — 평가/튜닝

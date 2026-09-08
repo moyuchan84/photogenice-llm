@@ -11,13 +11,15 @@ from datetime import UTC, datetime
 
 import asyncpg
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pgvector.asyncpg import register_vector
 
 from clients.embedding_client import EmbeddingClient, get_embedding_client
 from config import Settings, get_settings
+from db.repo import create_pool
 from workers.chunker import LogChunk, RawLogRow, chunk_logs
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["create_pool", "main", "run_embedding_sync_cycle"]
 
 _SELECT_UNEMBEDDED_SQL = """
     SELECT log_id, equipment_id, event_time, error_code, log_level, message
@@ -34,15 +36,6 @@ _INSERT_CHUNK_SQL = """
 """
 
 _MARK_EMBEDDED_SQL = "UPDATE logs_raw SET embedded_at = now() WHERE log_id = ANY($1::bigint[])"
-
-
-async def create_pool(settings: Settings | None = None) -> asyncpg.Pool:
-    settings = settings or get_settings()
-
-    async def _init(conn: asyncpg.Connection) -> None:
-        await register_vector(conn)
-
-    return await asyncpg.create_pool(settings.database_url, init=_init)
 
 
 def _zip_chunks_with_embeddings(
