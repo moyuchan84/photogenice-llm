@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     # --- HTTP 클라이언트 공통 (httpx + tenacity) ---
     embedding_http_timeout_sec: float = 30.0
     llm_http_timeout_sec: float = 60.0
+    asml_http_timeout_sec: float = 30.0
     http_retry_max_attempts: int = 3
 
     @field_validator("database_url")

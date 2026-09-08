@@ -4,6 +4,7 @@
 """
 
 import json
+from datetime import datetime
 
 import asyncpg
 from pgvector.asyncpg import register_vector
@@ -16,6 +17,14 @@ _INSERT_JUDGEMENT_SQL = """
          retrieved_chunk_ids, conclusion, confidence, recommended_action, raw_response)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING judgement_id
+"""
+
+_INSERT_SPEC_EVALUATION_SQL = """
+    INSERT INTO spec_evaluations
+        (equipment_id, parameter, measured_value, unit, lsl, usl, target, measured_at,
+         determination, margin_pct, raw_data_json, raw_spec_json, feature_type)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    RETURNING eval_id
 """
 
 
@@ -55,4 +64,40 @@ async def save_judgement(
             confidence,
             recommended_action,
             json.dumps(raw_response),
+        )
+
+
+async def save_spec_evaluation(
+    pool: asyncpg.Pool,
+    *,
+    equipment_id: str,
+    parameter: str,
+    measured_value: float | None,
+    unit: str | None,
+    lsl: float | None,
+    usl: float | None,
+    target: float | None,
+    measured_at: datetime | None,
+    determination: str,
+    margin_pct: float | None,
+    raw_data: dict,
+    raw_spec: dict,
+    feature_type: str = "generic",
+) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            _INSERT_SPEC_EVALUATION_SQL,
+            equipment_id,
+            parameter,
+            measured_value,
+            unit,
+            lsl,
+            usl,
+            target,
+            measured_at,
+            determination,
+            margin_pct,
+            json.dumps(raw_data),
+            json.dumps(raw_spec),
+            feature_type,
         )
