@@ -100,14 +100,14 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 ## 개발 순서 (클로드 코드 세션 단위 작업 목록, v2)
 
 - [x] **Session 0**: 개발 하네스 세팅 완료 — `.claude/settings.json`(hooks+permissions), `.claude/agents/*`(schema-migrator, db-reader, spec-evaluator-tester, rag-core-builder, code-reviewer), `.claude/skills/*`(spec-check-conventions, add-feature) 배포 및 hooks 실행권한 설정. 자세한 내용은 `claude-code-harness-guide.md` 참고.
-- [ ] **Session 1**: `db/schema.sql` 작성(`logs_raw` + `embedded_at` 컬럼, `log_chunks`, `spec_evaluations`, `judgements`) 및 마이그레이션, `config.py` 환경변수 로딩
-- [ ] **Session 2**: `clients/embedding_client.py` (BGE-M3) 구현 및 단건 테스트
-- [ ] **Session 3**: `workers/chunker.py` 구현 + 유닛테스트 (세션/에러 윈도우 청킹)
-- [ ] **Session 4**: `workers/embedding_sync_poller.py` — DB polling 방식 임베딩 동기화 워커, APScheduler 등록, 재시작 시 멱등성 테스트
-- [ ] **Session 5**: `scripts/backfill_embeddings.py` — 기존 데이터 1회성 백필 (Session 4 로직 재사용)
-- [ ] **Session 6**: `clients/llm_client.py` (Gemma4-260430) + JSON 강제 출력 파싱
-- [ ] **Session 7**: `rag/retriever.py`, `rag/prompt.py`, `rag/core.py` — `run_rag_judgement()` 구현
-- [ ] **Session 8**: `api/routes_history.py` — UC1 엔드포인트, 실제 과거 이슈로 수동 검증
+- [x] **Session 1**: `db/schema.sql` 작성(`logs_raw` + `embedded_at` 컬럼, `log_chunks`, `spec_evaluations`, `judgements`) 및 마이그레이션, `config.py` 환경변수 로딩
+- [x] **Session 2**: `clients/embedding_client.py` (BGE-M3) 구현 및 단건 테스트
+- [x] **Session 3**: `workers/chunker.py` 구현 + 유닛테스트 (세션/에러 윈도우 청킹)
+- [x] **Session 4**: `workers/embedding_sync_poller.py` — DB polling 방식 임베딩 동기화 워커, APScheduler 등록, 재시작 시 멱등성 테스트
+- [x] **Session 5**: `scripts/backfill_embeddings.py` — 기존 데이터 1회성 백필 (Session 4 로직 재사용)
+- [x] **Session 6**: `clients/llm_client.py` (Gemma4-260430) + JSON 강제 출력 파싱
+- [x] **Session 7**: `rag/retriever.py`, `rag/prompt.py`, `rag/core.py` — `run_rag_judgement()` 구현
+- [x] **Session 8**: `api/routes_history.py` — UC1 엔드포인트, 실제 과거 이슈로 수동 검증
 - [ ] **Session 9**: `rag/spec_evaluator.py` — 결정론적 spec in/out 판정 함수 + 경계값 유닛테스트
 - [ ] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
 - [ ] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
