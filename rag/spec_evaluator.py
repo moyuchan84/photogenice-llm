@@ -5,6 +5,7 @@ enforce-evaluator-purity.sh hook이 금지된 클라이언트 임포트를 자�
 DB 저장 및 조건부 RAG 호출(run_spec_check)은 Phase 4의 api/routes_spec_check.py
 책임이며 여기서 구현하지 않는다.
 """
+
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -26,9 +27,7 @@ class SpecEvaluator(Protocol):
 def evaluate_spec(data: dict, spec: dict) -> SpecResult:
     value = data["value"]
     lsl, usl = spec["lsl"], spec["usl"]
-    determination: Determination = (
-        "OUT_OF_SPEC" if (value < lsl or value > usl) else "IN_SPEC"
-    )
+    determination: Determination = "OUT_OF_SPEC" if (value < lsl or value > usl) else "IN_SPEC"
     half_range = (usl - lsl) / 2
     center = (usl + lsl) / 2
     if half_range == 0:

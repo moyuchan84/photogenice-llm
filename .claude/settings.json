@@ -35,7 +35,7 @@
         "matcher": "Edit|MultiEdit|Write",
         "hooks": [
           { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-evaluator-purity.sh" },
-          { "type": "command", "command": "command -v ruff >/dev/null 2>&1 && jq -r '.tool_input.file_path // empty' | grep '\\.py$' | xargs -r ruff format || true" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-python.sh" }
         ]
       }
     ]
