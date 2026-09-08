@@ -1,0 +1,38 @@
+[project]
+name = "asmr-rag"
+version = "0.1.0"
+description = "ASML 설비 로그 RAG 판정 시스템"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "asyncpg>=0.29",
+    "pgvector>=0.3.6",
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "apscheduler>=3.10",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# 문서(*.md)에 포함된 예시 코드 블록까지 검사/포맷 대상에 잡히는 것을 방지 —
+# 이 프로젝트의 실제 소스 파일(.py)만 대상으로 한다.
+extend-exclude = ["*.md"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+markers = [
+    "integration: 실제 Postgres(docker-compose)가 필요한 통합 테스트. `pytest -m integration`으로만 실행.",
+]

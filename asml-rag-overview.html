@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASML 설비 로그 RAG 시스템 — 아키텍처 논의 자료</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F6F9;
+    --surface:#FFFFFF;
+    --border:#E1E4EA;
+    --text:#161A22;
+    --muted:#5B6472;
+    --accent:#2D4FB0;
+    --accent-soft:#EAEFFB;
+    --warn:#B5650B;
+    --warn-soft:#FBF0E1;
+    --code-bg:#111726;
+    --code-text:#D7DEEA;
+    --code-accent:#7EE0B8;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans KR', -apple-system, sans-serif;
+    line-height:1.65;
+    font-size:15.5px;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  /* ---- layout shell ---- */
+  .shell{
+    display:grid;
+    grid-template-columns:250px 1fr;
+    max-width:1180px;
+    margin:0 auto;
+  }
+  nav.toc{
+    position:sticky;
+    top:0;
+    align-self:start;
+    height:100vh;
+    overflow-y:auto;
+    padding:36px 20px 36px 8px;
+    border-right:1px solid var(--border);
+  }
+  nav.toc .brand{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:.02em;
+    color:var(--muted);
+    margin-bottom:22px;
+  }
+  nav.toc a{
+    display:block;
+    color:var(--text);
+    text-decoration:none;
+    font-size:13.5px;
+    padding:7px 10px;
+    border-radius:var(--radius);
+    margin-bottom:2px;
+  }
+  nav.toc a:hover{background:var(--accent-soft); color:var(--accent);}
+  nav.toc .num{
+    color:var(--muted);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    margin-right:6px;
+  }
+
+  main{padding:48px 44px 100px;}
+  header.hero{
+    padding-bottom:34px;
+    margin-bottom:44px;
+    border-bottom:1px solid var(--border);
+  }
+  header.hero .kicker{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    color:var(--accent);
+    margin-bottom:14px;
+  }
+  header.hero h1{
+    font-size:32px;
+    line-height:1.28;
+    margin:0 0 14px;
+    font-weight:700;
+    max-width:640px;
+  }
+  header.hero p.lead{
+    max-width:600px;
+    color:var(--muted);
+    font-size:16px;
+    margin:0;
+  }
+
+  section{margin-bottom:64px; scroll-margin-top:24px;}
+  section h2{
+    font-size:22px;
+    margin:0 0 8px;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  section h2 .idx{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    color:var(--accent);
+    font-weight:500;
+  }
+  section > p.section-desc{
+    color:var(--muted);
+    max-width:680px;
+    margin:0 0 26px;
+  }
+  h3{font-size:16px; margin:28px 0 10px;}
+
+  .principles{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:14px;
+    margin-top:20px;
+  }
+  .principle{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+  }
+  .principle .p-num{
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--accent);
+    font-size:12px;
+    margin-bottom:8px;
+  }
+  .principle h4{margin:0 0 6px; font-size:14.5px;}
+  .principle p{margin:0; color:var(--muted); font-size:13.5px;}
+
+  /* ---- diagram ---- */
+  .diagram{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:28px 26px;
+  }
+  .d-row{
+    display:flex;
+    gap:14px;
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+  .d-arrow{
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    margin:8px 0;
+    font-family:'IBM Plex Mono', monospace;
+  }
+  .box{
+    border:1.5px solid var(--accent);
+    background:var(--accent-soft);
+    border-radius:var(--radius);
+    padding:12px 16px;
+    font-size:13px;
+    min-width:150px;
+    text-align:center;
+  }
+  .box .b-title{font-weight:600; margin-bottom:3px;}
+  .box .b-sub{color:var(--muted); font-size:11.5px; font-family:'IBM Plex Mono', monospace;}
+  .box.wide{min-width:340px;}
+  .box.dashed{
+    border-style:dashed;
+    border-color:var(--warn);
+    background:var(--warn-soft);
+  }
+  .box .db-list{
+    display:flex;
+    gap:6px;
+    justify-content:center;
+    flex-wrap:wrap;
+    margin-top:8px;
+  }
+  .db-list span{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:3px 6px;
+  }
+  .layer-label{
+    text-align:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--muted);
+    margin-top:-4px;
+    margin-bottom:6px;
+  }
+
+  /* ---- flow compare ---- */
+  .flow-compare{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:18px;
+  }
+  .flow-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+  .flow-card.agent{border-color:var(--warn);}
+  .flow-card .flow-tag{
+    display:inline-block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:3px 8px;
+    border-radius:20px;
+    background:var(--accent-soft);
+    color:var(--accent);
+    margin-bottom:12px;
+  }
+  .flow-card.agent .flow-tag{background:var(--warn-soft); color:var(--warn);}
+  .flow-card ol{margin:0; padding-left:20px;}
+  .flow-card li{margin-bottom:8px; font-size:13.5px;}
+  .flow-card li b{font-weight:600;}
+
+  /* ---- schema cards ---- */
+  .schema-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  .schema-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .schema-card .sc-head{
+    background:var(--code-bg);
+    color:var(--code-text);
+    padding:10px 16px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    display:flex;
+    justify-content:space-between;
+  }
+  .schema-card .sc-head .tag{color:var(--code-accent); font-size:11px;}
+  .schema-card table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  .schema-card td{padding:7px 16px; border-bottom:1px solid var(--border);}
+  .schema-card tr:last-child td{border-bottom:none;}
+  .schema-card td.col{font-family:'IBM Plex Mono', monospace; color:var(--text);}
+  .schema-card td.desc{color:var(--muted); text-align:right;}
+
+  /* ---- usecase cards ---- */
+  .uc-grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:16px;
+  }
+  .uc-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+  .uc-card .uc-name{font-size:15.5px; font-weight:600; margin-bottom:2px;}
+  .uc-card .uc-kind{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--accent);
+    margin-bottom:14px;
+    display:block;
+  }
+  .uc-card dl{margin:0;}
+  .uc-card dt{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    color:var(--muted);
+    margin-top:10px;
+  }
+  .uc-card dd{margin:2px 0 0; font-size:13px;}
+
+  /* ---- stack table ---- */
+  table.stack{width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
+  table.stack th{
+    text-align:left;
+    background:#F0F2F6;
+    font-size:12px;
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--muted);
+    padding:10px 16px;
+    font-weight:500;
+  }
+  table.stack td{padding:10px 16px; border-top:1px solid var(--border); font-size:13.5px;}
+
+  /* ---- roadmap ---- */
+  .roadmap{display:flex; flex-direction:column; gap:0;}
+  .rm-item{
+    display:grid;
+    grid-template-columns:90px 1fr;
+    gap:18px;
+    padding:16px 0;
+    border-top:1px solid var(--border);
+  }
+  .rm-item:first-child{border-top:none;}
+  .rm-phase{font-family:'IBM Plex Mono', monospace; color:var(--accent); font-size:13px; padding-top:2px;}
+  .rm-body h4{margin:0 0 4px; font-size:14.5px;}
+  .rm-body p{margin:0; color:var(--muted); font-size:13.5px;}
+
+  /* ---- open questions ---- */
+  .oq-list{display:flex; flex-direction:column; gap:10px;}
+  .oq-item{
+    background:var(--warn-soft);
+    border:1px solid #EBD3AA;
+    border-radius:var(--radius);
+    padding:14px 16px;
+    display:flex;
+    gap:12px;
+  }
+  .oq-item .oq-mark{color:var(--warn); font-family:'IBM Plex Mono', monospace; font-size:13px;}
+  .oq-item p{margin:0; font-size:13.5px;}
+  .oq-item .oq-owner{color:var(--muted); font-size:12px; margin-top:4px;}
+
+  footer{
+    border-top:1px solid var(--border);
+    padding-top:24px;
+    color:var(--muted);
+    font-size:12.5px;
+  }
+
+  @media (max-width:900px){
+    .shell{grid-template-columns:1fr;}
+    nav.toc{position:static; height:auto; border-right:none; border-bottom:1px solid var(--border);}
+    main{padding:32px 20px 80px;}
+    .principles, .flow-compare, .schema-grid, .uc-grid{grid-template-columns:1fr;}
+    .d-row{flex-direction:column; align-items:center;}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="toc">
+    <div class="brand">ASML LOG RAG · 논의자료</div>
+    <a href="#overview"><span class="num">00</span>개요</a>
+    <a href="#infra"><span class="num">01</span>인프라 구조</a>
+    <a href="#flow"><span class="num">02</span>호출 흐름</a>
+    <a href="#vectordb"><span class="num">03</span>Vector DB 구조화</a>
+    <a href="#usecases"><span class="num">04</span>유즈케이스</a>
+    <a href="#stack"><span class="num">05</span>기술 스택</a>
+    <a href="#roadmap"><span class="num">06</span>로드맵</a>
+    <a href="#questions"><span class="num">07</span>논의 필요 사항</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="kicker">INTERNAL ARCHITECTURE REVIEW</div>
+      <h1>ASML 설비 로그 RAG 시스템<br>아키텍처 논의 자료</h1>
+      <p class="lead">설비 로그(DB 적재분) 및 실시간 API 데이터를 기반으로, 판정·원인분석을 자동화하는 RAG 시스템의 전체 구조와 5개 기능 확장안을 정리했습니다.</p>
+    </header>
+
+    <!-- 00 개요 -->
+    <section id="overview">
+      <h2><span class="idx">00</span>개요</h2>
+      <p class="section-desc">
+        PostgreSQL(+pgvector)에 적재된 설비 로그와, 부서 API로부터 받는 실측·스펙 데이터를 결합해
+        <b>과거 이력 기반 판정(History)</b>, <b>스펙 in/out 판정(Focal Curve · Final XY)</b>,
+        <b>에러 원인 추정(ID Dump)</b> 4개 기능을 하나의 RAG 코어로 서비스합니다.
+      </p>
+      <div class="principles">
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 01</div>
+          <h4>판정과 설명의 분리</h4>
+          <p>숫자 비교(스펙 in/out)는 결정론적 코드로만 계산하고, LLM은 근거를 바탕으로 원인·결론을 설명하는 역할만 담당합니다.</p>
+        </div>
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 02</div>
+          <h4>1개 RAG 코어 + Feature Registry</h4>
+          <p>기능별 개별 LLM을 두지 않고, 검색·프롬프트·판정 로직을 공유하는 코어 위에 기능별 설정만 등록합니다.</p>
+        </div>
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 03</div>
+          <h4>결정론 우선, 에이전트는 부가 레이어</h4>
+          <p>MCP/tool-calling 기반 에이전트는 판정 파이프라인을 대체하지 않고, 엔지니어용 탐색 인터페이스로만 별도 운용합니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 인프라 구조 -->
+    <section id="infra">
+      <h2><span class="idx">01</span>인프라 구조</h2>
+      <p class="section-desc">데이터 소스부터 기능별 엔드포인트까지의 전체 계층 구조입니다. 실선/굵은 테두리는 현재 구축 대상, 점선(주황)은 향후 선택적으로 얹는 탐색 레이어입니다.</p>
+
+      <div class="diagram">
+        <div class="layer-label">데이터 소스</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">부서 ETL</div><div class="b-sub">주기적 배치 스케줄러</div></div>
+          <div class="box"><div class="b-title">ASML API</div><div class="b-sub">부서 운영 FastAPI 백엔드</div></div>
+        </div>
+        <div class="d-arrow">INSERT (주기적) ↓ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↓ HTTP 호출 (pull)</div>
+
+        <div class="layer-label">저장 계층</div>
+        <div class="d-row">
+          <div class="box wide">
+            <div class="b-title">PostgreSQL + pgvector</div>
+            <div class="db-list">
+              <span>logs_raw</span><span>log_chunks</span><span>spec_evaluations</span><span>judgements</span>
+            </div>
+          </div>
+        </div>
+        <div class="d-arrow">SELECT (polling) ↓</div>
+
+        <div class="layer-label">동기화 / 연동 계층</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">Embedding Sync Worker</div><div class="b-sub">polling → BGE-M3 호출 → upsert</div></div>
+          <div class="box"><div class="b-title">ASML API Client</div><div class="b-sub">httpx + 재시도/타임아웃</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+
+        <div class="layer-label">RAG 코어</div>
+        <div class="d-row">
+          <div class="box wide"><div class="b-title">Retriever · Prompt Builder · LLM Client</div><div class="b-sub">Feature Registry (focal_curve / final_xy / id_dump / history)</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+
+        <div class="layer-label">사내 모델 API</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">Embedding API</div><div class="b-sub">BGE-M3 · dim 1024</div></div>
+          <div class="box"><div class="b-title">LLM API</div><div class="b-sub">Gemma4-260430</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+
+        <div class="layer-label">서비스 엔드포인트</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">/query/history</div></div>
+          <div class="box"><div class="b-title">/query/focal-curve</div></div>
+          <div class="box"><div class="b-title">/query/final-xy</div></div>
+          <div class="box"><div class="b-title">/query/id-dump</div></div>
+        </div>
+        <div class="d-arrow">(선택 확장) ↓</div>
+
+        <div class="layer-label">탐색 레이어 · 선택 사항</div>
+        <div class="d-row">
+          <div class="box dashed"><div class="b-title">MCP Server + /chat</div><div class="b-sub">기존 결정론적 함수를 tool로 wrapping, LLM 재계산 없음</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 호출 흐름 -->
+    <section id="flow">
+      <h2><span class="idx">02</span>호출 흐름 — 판정 경로 vs 탐색 경로</h2>
+      <p class="section-desc">판정을 반환하는 핵심 경로와, 엔지니어가 자유롭게 파고드는 탐색 경로는 서로 다른 신뢰도 요구사항을 가지므로 흐름을 분리합니다.</p>
+      <div class="flow-compare">
+        <div class="flow-card">
+          <span class="flow-tag">핵심 · 결정론적</span>
+          <ol>
+            <li><b>요청 수신</b> — inline 데이터(프론트 렌더링값) 또는 identifier(설비/기간)</li>
+            <li><b>데이터 확보</b> — inline이 없으면 ASML API 호출 또는 DB 조회</li>
+            <li><b>판정 계산</b> — Evaluator가 spec in/out 또는 결정론적 비교 수행 (LLM 미사용)</li>
+            <li><b>조건부 RAG</b> — OUT_OF_SPEC/근접 시에만 벡터 검색 실행</li>
+            <li><b>LLM 설명 생성</b> — 판정 결과 + 검색된 과거 사례 → 원인/권고 JSON 생성</li>
+            <li><b>저장</b> — spec_evaluations / judgements에 근거와 함께 기록</li>
+          </ol>
+        </div>
+        <div class="flow-card agent">
+          <span class="flow-tag">선택 · 에이전트(MCP)</span>
+          <ol>
+            <li><b>자유 질의 수신</b> — "왜 이렇게 나왔는지", "비슷한 케이스 더" 등</li>
+            <li><b>LLM이 필요한 툴 선택</b> — get_spec_evaluation / search_historical_cases 등</li>
+            <li><b>툴 실행</b> — 이미 계산·저장된 결과만 조회 (재계산 없음)</li>
+            <li><b>결과 종합</b> — LLM이 여러 툴 결과를 조합해 자연어로 응답</li>
+            <li><b>후속 질의 반복</b> — 대화형으로 계속 탐색 가능</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 vector db -->
+    <section id="vectordb">
+      <h2><span class="idx">03</span>Vector DB 구조화</h2>
+      <p class="section-desc">
+        구조화 컬럼(설비/기간/에러코드/기능유형)과 벡터 유사도를 함께 쓰는 하이브리드 검색을 기본으로 합니다.
+        로그는 문맥이 짧아 한 줄 단위가 아닌 <b>세션/에러 윈도우 단위 청킹</b>을 사용합니다.
+      </p>
+
+      <div class="schema-grid">
+        <div class="schema-card">
+          <div class="sc-head">logs_raw <span class="tag">구조화 원본</span></div>
+          <table>
+            <tr><td class="col">equipment_id</td><td class="desc">설비 식별자</td></tr>
+            <tr><td class="col">event_time</td><td class="desc">발생 시각</td></tr>
+            <tr><td class="col">error_code / log_level</td><td class="desc">에러코드 · 심각도</td></tr>
+            <tr><td class="col">message / raw_json</td><td class="desc">원문 · 파싱 원본 보존</td></tr>
+            <tr><td class="col">embedded_at</td><td class="desc">polling 처리 여부 커서</td></tr>
+          </table>
+        </div>
+        <div class="schema-card">
+          <div class="sc-head">log_chunks <span class="tag">임베딩 대상</span></div>
+          <table>
+            <tr><td class="col">chunk_text</td><td class="desc">메타데이터를 녹인 청크 원문</td></tr>
+            <tr><td class="col">embedding&nbsp;vector(1024)</td><td class="desc">BGE-M3 임베딩</td></tr>
+            <tr><td class="col">log_ids[]</td><td class="desc">원본 로그 참조</td></tr>
+            <tr><td class="col">feature_type</td><td class="desc">id_dump / log_general 등 스코프 구분</td></tr>
+          </table>
+        </div>
+        <div class="schema-card">
+          <div class="sc-head">spec_evaluations <span class="tag">UC2 판정이력</span></div>
+          <table>
+            <tr><td class="col">feature_type</td><td class="desc">focal_curve / final_xy</td></tr>
+            <tr><td class="col">determination</td><td class="desc">IN_SPEC / OUT_OF_SPEC</td></tr>
+            <tr><td class="col">margin_pct</td><td class="desc">스펙 여유율</td></tr>
+            <tr><td class="col">metrics_json</td><td class="desc">curve/배열 계산 통계(range·sigma 등)</td></tr>
+            <tr><td class="col">raw_data_json / raw_spec_json</td><td class="desc">원본 실측·스펙 보존</td></tr>
+          </table>
+        </div>
+        <div class="schema-card">
+          <div class="sc-head">judgements <span class="tag">공통 결론 이력</span></div>
+          <table>
+            <tr><td class="col">use_case / feature_type</td><td class="desc">history · spec_check · root_cause 구분</td></tr>
+            <tr><td class="col">retrieved_chunk_ids[]</td><td class="desc">근거로 사용된 청크</td></tr>
+            <tr><td class="col">conclusion / confidence</td><td class="desc">LLM 결론 · 신뢰도</td></tr>
+            <tr><td class="col">raw_response</td><td class="desc">감사 추적용 원본 응답</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <h3>청킹 전략</h3>
+      <p style="color:var(--muted); max-width:680px; margin:0;">
+        동일 설비 기준 시간 간격 내 로그를 하나의 이벤트 버스트로 묶고, 에러/경고 발생 시점 전후 로그를 함께 포함해
+        인과관계를 임베딩에 반영합니다. 청크 텍스트에는 설비·기간·에러코드를 자연어로 녹여 넣어 검색 정확도를 높입니다.
+      </p>
+    </section>
+
+    <!-- 04 유즈케이스 -->
+    <section id="usecases">
+      <h2><span class="idx">04</span>유즈케이스</h2>
+      <p class="section-desc">4개 기능 모두 History(UC1) 또는 Spec-check(UC2) 패턴 중 하나로 구현되며, Feature Registry로 관리됩니다.</p>
+      <div class="uc-grid">
+        <div class="uc-card">
+          <div class="uc-name">History</div>
+          <span class="uc-kind">PATTERN: history · 항상 RAG</span>
+          <dl>
+            <dt>입력</dt><dd>사용자 자연어 질의 + 필터(설비/기간/에러코드)</dd>
+            <dt>처리</dt><dd>하이브리드 검색 → LLM 판정/결론</dd>
+            <dt>데이터 소스</dt><dd>logs_raw / log_chunks (ETL → polling 임베딩)</dd>
+          </dl>
+        </div>
+        <div class="uc-card">
+          <div class="uc-name">Focal Curve</div>
+          <span class="uc-kind">PATTERN: spec_check · 조건부 RAG</span>
+          <dl>
+            <dt>입력</dt><dd>curve 배열(data) + 스펙(spec) — inline 또는 DB/API 조회</dd>
+            <dt>처리</dt><dd>FocalCurveEvaluator가 range/sigma/DOF 결정론 계산 → OOS/근접 시만 RAG</dd>
+            <dt>출력</dt><dd>determination, margin_pct (+ OOS 시 원인가설·권고)</dd>
+          </dl>
+        </div>
+        <div class="uc-card">
+          <div class="uc-name">Final XY</div>
+          <span class="uc-kind">PATTERN: spec_check · 조건부 RAG</span>
+          <dl>
+            <dt>입력</dt><dd>X/Y 포인트 집합(data) + 스펙(spec)</dd>
+            <dt>처리</dt><dd>FinalXYEvaluator가 mean±3σ 결정론 계산 → OOS/근접 시만 RAG</dd>
+            <dt>출력</dt><dd>determination, margin_pct (+ OOS 시 원인가설·권고)</dd>
+          </dl>
+        </div>
+        <div class="uc-card">
+          <div class="uc-name">ID Dump</div>
+          <span class="uc-kind">PATTERN: root_cause · 항상 RAG</span>
+          <dl>
+            <dt>입력</dt><dd>에러 발생 로그 파싱 결과</dd>
+            <dt>처리</dt><dd>평가자 없음 — 과거 원인분석 이력(judgements)과 유사도 검색 → LLM 원인 추정</dd>
+            <dt>전제조건</dt><dd>엔지니어가 기록한 과거 원인 분석 시드 데이터 필요</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 기술 스택 -->
+    <section id="stack">
+      <h2><span class="idx">05</span>기술 스택</h2>
+      <table class="stack">
+        <tr><th>레이어</th><th>기술</th><th>비고</th></tr>
+        <tr><td>언어</td><td class="mono">Python 3.11+</td><td>RAG 코어 전체 통일, 필요 시 수집 게이트웨이만 Node.js 병행 가능</td></tr>
+        <tr><td>API 서버</td><td class="mono">FastAPI + Uvicorn</td><td>async 통일</td></tr>
+        <tr><td>DB</td><td class="mono">PostgreSQL + pgvector</td><td>HNSW 인덱스, cosine distance</td></tr>
+        <tr><td>DB 드라이버</td><td class="mono">asyncpg</td><td>동기 ORM 미사용</td></tr>
+        <tr><td>외부 API 호출</td><td class="mono">httpx + tenacity</td><td>ASML API / 사내 LLM·임베딩 API 공통 적용</td></tr>
+        <tr><td>스케줄링</td><td class="mono">APScheduler → Celery+Redis</td><td>초기 단순화, 처리량 증가 시 확장</td></tr>
+        <tr><td>LLM</td><td class="mono">Gemma4-260430</td><td>사내 API 호출</td></tr>
+        <tr><td>Embedding</td><td class="mono">BGE-M3</td><td>사내 API 호출, dim 1024</td></tr>
+        <tr><td>탐색 레이어(선택)</td><td class="mono">MCP</td><td>Gemma4-260430의 tool-calling 지원 여부 선확인 필요</td></tr>
+      </table>
+    </section>
+
+    <!-- 06 로드맵 -->
+    <section id="roadmap">
+      <h2><span class="idx">06</span>로드맵</h2>
+      <div class="roadmap">
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 0</div>
+          <div class="rm-body"><h4>스펙 확정</h4><p>logs_raw 실제 스키마, ASML API 응답 필드, 사내 LLM/임베딩 API 스펙(배치·rate limit·tool-calling 지원 여부) 확인</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 1</div>
+          <div class="rm-body"><h4>UC1 임베딩 동기화</h4><p>embedded_at 컬럼 기반 polling 워커 구축 및 검증</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 2</div>
+          <div class="rm-body"><h4>UC1 History 서비스</h4><p>하이브리드 검색 + LLM 판정 엔드포인트 구현</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 3</div>
+          <div class="rm-body"><h4>Spec Evaluator 프레임 + Focal Curve / Final XY</h4><p>결정론적 evaluator, feature_type 스키마 확장, 조건부 RAG 결합</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 4</div>
+          <div class="rm-body"><h4>ID Dump</h4><p>원인분석 시드 데이터 확보 → 유사사례 검색 기반 원인 추정 기능</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">PHASE 5</div>
+          <div class="rm-body"><h4>평가 · 튜닝</h4><p>골든셋 기반 정확도 측정, 청킹/임계치/프롬프트 튜닝</p></div>
+        </div>
+        <div class="rm-item">
+          <div class="rm-phase">확장(선택)</div>
+          <div class="rm-body"><h4>MCP 탐색 레이어</h4><p>핵심 판정 안정화 이후, 엔지니어용 대화형 탐색 인터페이스로 별도 추가</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 논의 필요 사항 -->
+    <section id="questions">
+      <h2><span class="idx">07</span>논의 필요 사항</h2>
+      <p class="section-desc">부서 협의가 필요한 항목입니다.</p>
+      <div class="oq-list">
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>ASML API(data/spec) 및 logs_raw의 실제 필드명·스키마 확정</p></div></div>
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>Focal Curve / Final XY의 스펙 판정 기준 — range, sigma, DOF 윈도우 중 부서 표준 계산식 확인</p></div></div>
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>사내 Gemma4-260430 API의 tool-calling(function calling) 지원 여부 — MCP 탐색 레이어 도입 가능성 판단 기준</p></div></div>
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>BGE-M3/Gemma4-260430 API의 배치 처리 지원 여부, rate limit — 임베딩 백필 처리량 설계에 필요</p></div></div>
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>ID Dump 기능의 초기 정확도를 위한 과거 원인분석 시드 데이터 확보 방안 및 담당자</p></div></div>
+        <div class="oq-item"><span class="oq-mark">Q</span><div><p>margin_pct(스펙 근접 판단 임계치) 적정값 — 현재 10% 가정, 부서 경험치 반영 필요</p></div></div>
+      </div>
+    </section>
+
+    <footer>
+      ASML 설비 로그 RAG 시스템 · 아키텍처 논의 자료
+    </footer>
+  </main>
+</div>
+</body>
+</html>
