@@ -109,8 +109,8 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 - [x] **Session 7**: `rag/retriever.py`, `rag/prompt.py`, `rag/core.py` — `run_rag_judgement()` 구현
 - [x] **Session 8**: `api/routes_history.py` — UC1 엔드포인트, 실제 과거 이슈로 수동 검증
 - [x] **Session 9**: `rag/spec_evaluator.py` — 결정론적 spec in/out 판정 함수 + 경계값 유닛테스트
-- [ ] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
-- [ ] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
+- [x] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
+- [x] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
 - [ ] **Session 12**: 평가 스크립트 — 과거 실제 OOS 사례 골든셋으로 원인 가설 품질 측정, 임계치/프롬프트 튜닝
 - [ ] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션
 - [ ] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 골격 작성 (focal_curve/final_xy/id_dump 항목, prompt_context 초안)

@@ -18,7 +18,7 @@
 | Phase 1 — UC1 임베딩 동기화 | DB polling 기반 백그라운드 임베딩 파이프라인 구축 | Session 1~5 | `schema-migrator`, `db-reader` | ✅ 완료 |
 | Phase 2 — UC1 판정 서비스 | `/query/history` 엔드포인트 구현 | Session 6~8 | `rag-core-builder` | ✅ 완료 |
 | Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ✅ 완료 |
-| Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ⬜ 예정 |
+| Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ✅ 완료 |
 | Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ⬜ 예정 |
 | Phase 6 — 기능 확장 (Focal Curve/Final XY/ID Dump) | Feature Registry 패턴으로 3개 기능 추가 | Session 13~19 | `/add-feature` 스킬, worktree 병렬 서브에이전트 | ⬜ 예정 |
 | Phase 7 — MCP 탐색 인터페이스 (선택) | `/chat` 탐색형 에이전트 인터페이스 | Session 20 | `mcp-tool-builder`(신규 필요) | ⬜ 보류 (선택 사항, 조건부 착수) |
@@ -60,12 +60,13 @@
 - **완료 기준**: 유닛테스트 100% 통과(12/12), `enforce-evaluator-purity.sh` hook이 실제로 LLM 호출 삽입을 차단하는 것을 확인 (FR-2.2, NFR-1)
 - **참고**: 검증 중 hook이 `jq` 의존성 때문에 이 개발 환경(jq 미설치 Git Bash)에서 조용히 no-op 되는 것을 발견 — `enforce-evaluator-purity.sh`에 jq 부재 시 grep/sed로 파싱하는 폴백을 추가해 실제로 차단되는 것을 확인함. `run_spec_check()`(DB 저장 + 조건부 RAG 호출)은 순수성 유지를 위해 의도적으로 Phase 4로 위임함
 
-### Phase 4 — UC2 API 클라이언트 + RAG 결합 (Session 10~11)
+### Phase 4 — UC2 API 클라이언트 + RAG 결합 (Session 10~11) ✅ 완료
 
 - **목표**: ASML API pull → 결정론적 판정 → 조건부 RAG 설명까지 `/query/spec-check`로 통합
 - **선행조건**: Phase 3 완료, ASML API 실제 엔드포인트/인증/스키마 확정
-- **산출물**: `clients/asml_api_client.py`(타임아웃/재시도), `api/routes_spec_check.py`
-- **완료 기준**: `spec_evaluations` 저장 확인, OOS 조건에서만 RAG가 호출됨을 확인 (FR-2.3, FR-2.4)
+- **산출물**: `clients/asml_api_client.py`(`HttpAsmlApiClient`, httpx+tenacity 타임아웃/재시도, 부서 스키마 확정 전까지 `_parse_response()`만 조정하면 되는 격리된 파싱 경계), `api/routes_spec_check.py`, `models/schemas.py`(`SpecCheckRequest`/`SpecCheckResponse` — identifier 기반 최소 스키마), `db/repo.py`(`save_spec_evaluation()`), `api/deps.py`(`AsmlApiClientDep`, `SettingsDep`)
+- **완료 기준**: `spec_evaluations` 저장 확인, OOS 조건에서만 RAG가 호출됨을 확인 (FR-2.3, FR-2.4) — `tests/test_routes_spec_check.py`로 IN_SPEC(여유)/OUT_OF_SPEC/근접-margin 세 경로 모두 검증
+- **참고**: ASML API 실제 엔드포인트/인증/응답 필드명은 여전히 TBD(§11) — `InternalLLMClient`/`InternalEmbeddingClient`와 동일한 패턴으로 합리적 추정 계약을 구현하고 파싱만 격리해둠. `SpecCheckRequest`의 `inline_data`/`inline_spec` 지원은 의도적으로 Phase 6(Session 17)으로 미룸
 
 ### Phase 5 — 평가/튜닝 (Session 12)
 
@@ -108,7 +109,7 @@
 - [x] Phase 1 — UC1 임베딩 동기화
 - [x] Phase 2 — UC1 판정 서비스 (`/query/history`)
 - [x] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
-- [ ] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
+- [x] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
 - [ ] Phase 5 — 평가/튜닝
 - [ ] Phase 6 — Focal Curve / Final XY / ID Dump
 - [ ] Phase 7 — MCP 탐색 인터페이스 (선택, 조건부)
