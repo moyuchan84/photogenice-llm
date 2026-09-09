@@ -14,7 +14,8 @@ _BASE_SYSTEM_PROMPT = """당신은 ASML 리소그래피 설비 로그를 분석�
 
 반드시 아래 JSON 스키마로만 응답하세요 (다른 텍스트나 설명을 덧붙이지 마세요):
 {
-  "conclusion": "<상황에 대한 결론을 한국어로 서술>",
+  "conclusion": "<근거 chunk에서 확인된 구체적인 원인(root cause)을 한국어로 서술. 질의를
+    그대로 되풀이하지 말고, 근거에 나타난 메커니즘(예: 부품/현상/조건)을 명시할 것>",
   "confidence": <0.0~1.0 사이의 확신도>,
   "evidence_chunk_ids": [<판단에 사용한 chunk_id 정수 목록>],
   "recommended_action": "<권고 조치를 한국어로 서술>"

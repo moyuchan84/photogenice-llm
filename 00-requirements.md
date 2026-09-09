@@ -126,7 +126,7 @@ ASML 설비에서 발생하는 로그/측정 데이터를 기반으로, 엔지�
 
 | 인터페이스 | 제공 주체 | 상태 |
 |---|---|---|
-| ASML API (FastAPI) | 부서 (기존 운영 중) | 엔드포인트/인증/응답 스키마 **확정 필요** |
+| ASML API (FastAPI) | 부서 (기존 운영 중, 코드네임 `fleet`) | 엔드포인트/요청·응답 계약 자체는 로컬 클론 `ftpmodule/README.api.md`·`ftpmodule/SPEC.md`·`ftpmodule/fleet/processing/parse/<item>/interface.md`에 문서화되어 있음(추측 금지, 항상 이 문서를 먼저 확인). **다만 우리 기능(focal_curve/final_xy/id_dump/UC2)이 어느 item·엔드포인트에 대응하는지의 매핑은 부서 확인 필요** — `CLAUDE.md` "기존 백엔드 참고 자료" 참고 |
 | 사내 LLM API (Gemma4-260430) | 사내 플랫폼팀 | 스펙 확인 필요 (특히 tool-calling 지원 여부, FR-7.3) |
 | 사내 Embedding API (BGE-M3, 1024차원) | 사내 플랫폼팀 | 스펙 확인 필요 |
 | PostgreSQL + pgvector | 기존 인프라 (세팅 완료) | 사용 가능 |
@@ -150,11 +150,33 @@ ASML 설비에서 발생하는 로그/측정 데이터를 기반으로, 엔지�
 
 ## 11. 미해결 이슈 (Open Questions / TBD)
 
-- `logs_raw`의 실제 컬럼 스키마 확정 필요 (Phase 0 선행 조건)
-- ASML API의 실제 엔드포인트/인증 방식/응답 스키마(필드명) 확정 필요
+- `logs_raw`의 실제 컬럼 스키마 확정 필요 (Phase 0 선행 조건) — `ftpmodule`의 자체 PostgreSQL 스키마(`ftpmodule/fleet/data/__spec__.md`, `ftpmodule/fleet/data/migrations/`)가 원천 데이터 구조의 실물 참고 자료. 이 프로젝트의 `logs_raw`가 그 DB를 그대로 쓰는지, 별도 ETL 산출물인지부터 부서에 확인 필요
+- ASML API의 실제 엔드포인트/인증 방식/응답 스키마(필드명) 확정 필요 — 계약 자체는 `ftpmodule/README.api.md`에 문서화됨(추측 금지). 남은 것은 인증 방식(현재 무인증 내부망 전제, §1.1 CORS 설명 참고)과 우리 기능-item 매핑 확인뿐
 - 사내 Gemma4-260430 API의 tool-calling(`tools`/`function_call`) 지원 여부 — FR-7.3, Session 20 선행조건
-- `margin_pct` 임계치(기본 10%), 하이브리드 검색 `top_k`, 청킹 윈도우 크기 등 파라미터는 Phase 5 평가에서 실측 기반으로 확정
-- Focal Curve/Final XY의 정확한 계산식(현재 range/sigma/DOF, mean±3σ는 초안) — 부서 엔지니어 확인 필요
+- Focal Curve/Final XY의 정확한 계산식(현재 range/sigma/DOF, mean±3σ는 초안) — 부서 엔지니어 확인 필요. `ftpmodule`의 `focal`/`overlay` item 응답(레코드 필드: `field_curve`의 `intra`/`inter`, `overlay`의 `dx`/`dy` 등)이 계산식의 실제 입력 후보이므로 확정 전 `ftpmodule/fleet/processing/parse/focal/interface.md`·`overlay/interface.md` 검토 우선
+
+### 11.1 Phase 5(Session 12)에서 확정된 값
+
+`margin_pct` 임계치/`top_k`/청킹 윈도우 크기는 부서의 실제 과거 OOS 이력이 아직 없어
+(logs_raw/ASML API 스펙과 마찬가지로 TBD), ASML 리소그래피 도메인에서 흔한 8개
+시나리오(overlay/focus/dose 등)로 합성한 골든셋(`scripts/golden_set/spec_check_cases.json`)
+을 실제 로컬 Postgres+Ollama(bge-m3/llama3) 파이프라인에 통과시켜 아래 값을 확정했다.
+부서로부터 실제 OOS 이력이 확보되면 같은 골든셋 형식으로 교체/확장해 아래 스크립트를
+재실행하기만 하면 된다 — 인프라 자체가 이 세션의 산출물이다.
+
+- `SPEC_CHECK_MARGIN_THRESHOLD_PCT`: **10% → 15%**로 변경. 5/10/15/20/25% 후보를
+  스윕한 결과 15%만 게이트 정확도 100%(다른 후보는 모두 88%)를 기록했다 — 기존
+  기본값 10%는 margin 12%인 근접-이탈 사례를 놓치는(false negative) 경우가 있었다.
+  (`scripts/evaluate_golden_set.py`, `scripts/golden_set/last_run_report.json`)
+- `top_k`: **5 유지**(기존 기본값과 동일하게 확정). top_k=5에서 근거 chunk 적중률
+  100%, 결론 키워드 일치율 100%(프롬프트 튜닝 후, 아래 참고), 평균 confidence 0.80.
+- 청킹 윈도우(`CHUNK_ERROR_WINDOW_BEFORE/AFTER`): **5 유지**(기존 기본값과 동일하게
+  확정). 합성 "이상감지→조치→복구" 로그로 스윕한 결과, 5 미만은 복구 조치 로그가
+  청크에서 잘려나가고 5보다 키워도 복구 커버리지는 늘지 않고 청크 크기만 커졌다.
+  (`scripts/evaluate_chunk_window.py`)
+- 프롬프트: `rag/prompt.py`의 `conclusion` 필드 설명을 "질의를 그대로 되풀이하지
+  말고 근거에 나타난 구체적 메커니즘을 명시할 것"으로 강화. 튜닝 전 결론 키워드
+  일치율 67% → 튜닝 후 100%로 개선을 실측 확인.
 
 ## 12. 관련 문서
 

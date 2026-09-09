@@ -19,7 +19,7 @@
 | Phase 2 — UC1 판정 서비스 | `/query/history` 엔드포인트 구현 | Session 6~8 | `rag-core-builder` | ✅ 완료 |
 | Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ✅ 완료 |
 | Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ✅ 완료 |
-| Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ⬜ 예정 |
+| Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ✅ 완료 |
 | Phase 6 — 기능 확장 (Focal Curve/Final XY/ID Dump) | Feature Registry 패턴으로 3개 기능 추가 | Session 13~19 | `/add-feature` 스킬, worktree 병렬 서브에이전트 | ⬜ 예정 |
 | Phase 7 — MCP 탐색 인터페이스 (선택) | `/chat` 탐색형 에이전트 인터페이스 | Session 20 | `mcp-tool-builder`(신규 필요) | ⬜ 보류 (선택 사항, 조건부 착수) |
 | 상시 | 아키텍처 원칙 위반 여부 점검 | 각 Phase 종료 시점마다 | `code-reviewer` | 🔁 지속 |
@@ -68,12 +68,23 @@
 - **완료 기준**: `spec_evaluations` 저장 확인, OOS 조건에서만 RAG가 호출됨을 확인 (FR-2.3, FR-2.4) — `tests/test_routes_spec_check.py`로 IN_SPEC(여유)/OUT_OF_SPEC/근접-margin 세 경로 모두 검증
 - **참고**: ASML API 실제 엔드포인트/인증/응답 필드명은 여전히 TBD(§11) — `InternalLLMClient`/`InternalEmbeddingClient`와 동일한 패턴으로 합리적 추정 계약을 구현하고 파싱만 격리해둠. `SpecCheckRequest`의 `inline_data`/`inline_spec` 지원은 의도적으로 Phase 6(Session 17)으로 미룸
 
-### Phase 5 — 평가/튜닝 (Session 12)
+### Phase 5 — 평가/튜닝 (Session 12) ✅ 완료
 
 - **목표**: 과거 실제 OOS 사례 골든셋으로 원인 가설 품질 측정
 - **선행조건**: Phase 2, Phase 4 완료
-- **산출물**: 평가 스크립트, 튜닝된 `margin_pct` 임계치/`top_k`/프롬프트
+- **산출물**: `scripts/evaluate_golden_set.py`(margin_pct 임계치/top_k 스윕, 실제
+  Postgres+Ollama로 실행) + `scripts/golden_set/spec_check_cases.json`(합성 골든셋
+  8케이스) + `scripts/evaluate_chunk_window.py`(청킹 윈도우 스윕, 순수 계산) +
+  튜닝된 `margin_pct` 임계치(10%→15%)/`top_k`(5 확정)/프롬프트(`rag/prompt.py`
+  conclusion 필드 지시문 강화)
 - **완료 기준**: `00-requirements.md` §11의 파라미터 TBD 항목이 실측값으로 확정됨
+- **참고**: 부서의 실제 과거 OOS 이력이 아직 없어(§11의 다른 TBD와 동일 사정) 도메인
+  지식 기반으로 합성한 골든셋을 사용했다 — 실제 이력이 확보되면 같은 형식으로
+  교체/확장해 두 스크립트를 재실행하면 된다(스크립트 자체가 재사용 가능한 인프라).
+  margin_pct 스윕은 5/10/15/20/25% 중 15%만 게이트 정확도 100%(나머지 88%)를
+  기록했고, top_k=5는 근거 적중률/키워드 일치율 모두 100%(프롬프트 튜닝 후)를
+  달성했다. 청킹 윈도우는 기존 기본값 5가 이미 최적임을 확인(변경 없음). 상세 수치는
+  `scripts/golden_set/last_run_report.json` 참고.
 
 ### Phase 6 — 기능 확장: Focal Curve / Final XY / ID Dump (Session 13~19)
 
@@ -110,7 +121,7 @@
 - [x] Phase 2 — UC1 판정 서비스 (`/query/history`)
 - [x] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
 - [x] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
-- [ ] Phase 5 — 평가/튜닝
+- [x] Phase 5 — 평가/튜닝
 - [ ] Phase 6 — Focal Curve / Final XY / ID Dump
 - [ ] Phase 7 — MCP 탐색 인터페이스 (선택, 조건부)
 

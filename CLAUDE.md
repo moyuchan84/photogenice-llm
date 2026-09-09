@@ -21,6 +21,26 @@ ASML 설비 로그를 기반으로 한 RAG 판정 시스템. 두 가지 유즈�
 - `id_dump` → UC1(root_cause) 패턴. 평가자 없이 항상 RAG를 호출해 과거 유사 원인 사례를 검색하고 원인을 추정한다.
 - 기능별 "특화"는 모델을 나누는 게 아니라 `FEATURE_REGISTRY`의 `prompt_context`(도메인 지식)와 검색 시 `feature_type` 필터로 구현한다. 새 기능이 추가되면 이 레지스트리에 항목만 추가하고, `run_rag_judgement()`/`run_spec_check()` 본체는 수정하지 않는 것이 원칙이다.
 
+## 기존 백엔드 참고 자료 — `ftpmodule/` (git 비추적, 로컬 클론)
+
+부서가 이미 운영 중인 ASML 로그 수집/파싱 백엔드(FTP fetch + 파싱 + 스케줄러 + 자체 FastAPI + PostgreSQL 스키마, 코드네임 `fleet`)를 저장소 루트에 `ftpmodule/`로 클론해 두었다. **별도 git 저장소이며 `.gitignore`에 등록되어 이 프로젝트의 커밋에는 포함되지 않는다** — 읽기 전용 참고 자료로만 쓰고 수정하지 않는다.
+
+이 문서와 `00-requirements.md`/`01-architecture.md`에 "확정 필요(TBD)"로 남아 있는 ASML API 응답 스키마, spec 판정 기준 데이터, item(focal/overlay 등)별 파서 레코드 스키마는 **추측해서 설계하지 말고 먼저 `ftpmodule` 문서를 확인한다**:
+
+| 확인하려는 것 | 참고 문서 |
+|---|---|
+| ASML API 엔드포인트/요청·응답 계약 (HTTP) | `ftpmodule/README.api.md` |
+| 설계 불변식·전체 스펙 원문 | `ftpmodule/SPEC.md` |
+| item(파서)별 레코드 스키마 — `dump`/`focal`/`overlay`/`sy`/`focalspec`/`overlayspec`/`tree` | `ftpmodule/fleet/processing/parse/<item>/interface.md` |
+| DB 영속화 정책(테이블 목록·마이그레이션 규칙) | `ftpmodule/fleet/data/__spec__.md`, `ftpmodule/fleet/data/migrations/` |
+| spec 판정 기준 데이터(기준정보) — `spec_criteria`/`spec_notes`, `/spec/map` | `ftpmodule/SPEC.md` §3.13, `ftpmodule/README.api.md` §14 |
+| 손으로 돌리는 운영 스크립트(시계 동기화·초기화 등) | `ftpmodule/README.scripts.md` |
+
+주의할 점:
+- `ftpmodule`은 **`data`+`spec`이 한 응답에 결합돼 오지 않는다** — item 실행(`POST /servers/{id}/items/{item}`)이 실측값을, `/spec/map`·`/spec/criteria`가 판정 기준을 **별도 호출**로 준다. `01-architecture.md` §3.1의 `data`+`spec` 결합 JSON 예시는 초안 가정이므로, `clients/asml_api_client.py`/`rag/spec_evaluator.py` 구현·수정 시 실제로는 두 호출을 조합해야 할 수 있다는 점을 감안한다.
+- `focal_curve`/`final_xy` 기능이 `ftpmodule`의 어느 item(`focal`/`overlay` 등)에 대응하는지는 아직 부서 확인 전이다 — Session 14(`FEATURE_REGISTRY` 골격) 착수 전에 확정할 것.
+- 시각 필드는 전부 KST(+09:00) aware datetime으로 내려온다(SPEC §3.4) — 우리 쪽 `measured_at` 등 시각 파싱 시 그대로 신뢰 가능하다.
+
 ## 기술 스택 (고정)
 
 - 언어: Python 3.11+
@@ -90,6 +110,7 @@ INTERNAL_EMBEDDING_API_KEY=xxx
 INTERNAL_EMBEDDING_MODEL=bge-m3
 EMBEDDING_DIM=1024
 
+# 실제 엔드포인트/요청·응답 계약은 ftpmodule/README.api.md 참고 (§"기존 백엔드 참고 자료")
 ASML_API_BASE=https://asml-backend.internal.company.local
 ASML_API_KEY=xxx
 
@@ -111,12 +132,12 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 - [x] **Session 9**: `rag/spec_evaluator.py` — 결정론적 spec in/out 판정 함수 + 경계값 유닛테스트
 - [x] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
 - [x] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
-- [ ] **Session 12**: 평가 스크립트 — 과거 실제 OOS 사례 골든셋으로 원인 가설 품질 측정, 임계치/프롬프트 튜닝
+- [x] **Session 12**: 평가 스크립트(`scripts/evaluate_golden_set.py`, `scripts/evaluate_chunk_window.py`) — 합성 골든셋(부서 실이력 TBD)으로 원인 가설 품질 측정, `margin_pct` 임계치 10%→15%/`top_k`=5/프롬프트 튜닝 확정. 상세: `00-requirements.md` §11.1, `02-roadmap.md` Phase 5
 - [ ] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션
-- [ ] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 골격 작성 (focal_curve/final_xy/id_dump 항목, prompt_context 초안)
+- [ ] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 골격 작성 (focal_curve/final_xy/id_dump 항목, prompt_context 초안). 착수 전 `ftpmodule`의 어느 item(`focal`/`overlay` 등)이 focal_curve/final_xy에 대응하는지 `ftpmodule/fleet/processing/parse/<item>/interface.md`로 확인
 - [ ] **Session 15**: `rag/evaluators/focal_curve.py` — curve 배열 range/sigma/DOF 계산 로직 + 유닛테스트
 - [ ] **Session 16**: `rag/evaluators/final_xy.py` — X/Y mean±3σ 계산 로직 + 유닛테스트
-- [ ] **Session 17**: `models/schemas.py`에 `SpecCheckRequest`(inline_data/inline_spec vs identifier 기반 조회) 추가, `resolve_data_and_spec()` 구현
+- [ ] **Session 17**: `models/schemas.py`에 `SpecCheckRequest`(inline_data/inline_spec vs identifier 기반 조회) 추가, `resolve_data_and_spec()` 구현. identifier 기반 조회 경로는 `ftpmodule/README.api.md`의 item 실행(`/servers/{id}/items/{item}`) + `/spec/map` 두 호출 조합이 필요할 수 있음(위 "기존 백엔드 참고 자료" 참고)
 - [ ] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현, `judgements`에 시드 데이터(과거 원인 분석 이력) 채우기
 - [ ] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, Feature Registry 통해 공용 로직 호출 확인
 - [ ] **Session 20 (선택, UC1~7 안정화 이후)**: 사내 Gemma4-260430 API의 tool-calling 지원 여부 확인 → 지원 시 `mcp_server/tools.py` 구현(기존 결정론적 함수 wrapping) → `/chat` 탐색 엔드포인트 추가

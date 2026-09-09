@@ -8,7 +8,7 @@
 | LLM | 사내 API로 호출하는 Gemma4-260430 |
 | Embedding | 사내 API로 호출하는 BGE-M3 (차원 1024) |
 | **시나리오 1 (UC1, DB 기반 판정)** | 부서 ETL이 **주기적으로 스케줄링**되어 로그 데이터를 DB에 적재. 우리 시스템은 이 DB를 **주기적으로 polling**해서 신규/미임베딩 데이터를 찾아 임베딩 후 벡터로 저장 |
-| **시나리오 2 (UC2, API 기반 판정)** | ASML API는 **부서에서 이미 만들어 운영 중인 FastAPI 백엔드**이며, 우리는 이 API를 **호출(client)**해서 부서가 정의한 스키마의 JSON을 받아온다. 응답은 **① 실측 데이터(data) + ② 스펙 데이터(spec)** 두 종류가 결합된 구조이며, 이 둘을 비교해 **spec in/out 판정과 결론**을 내려야 함 |
+| **시나리오 2 (UC2, API 기반 판정)** | ASML API는 **부서에서 이미 만들어 운영 중인 FastAPI 백엔드**이며, 우리는 이 API를 **호출(client)**해서 부서가 정의한 스키마의 JSON을 받아온다. 응답은 **① 실측 데이터(data) + ② 스펙 데이터(spec)** 두 종류가 결합된 구조이며, 이 둘을 비교해 **spec in/out 판정과 결론**을 내려야 함 (※ 이 표의 "결합된 구조"는 아래 §3.1 초안 가정이며, 실제 백엔드 계약은 로컬 클론 `ftpmodule/`을 참고 — `CLAUDE.md` "기존 백엔드 참고 자료" 섹션) |
 
 v1과 가장 크게 달라진 지점:
 1. **UC1의 임베딩 동기화는 DB polling 방식**으로 확정 (실시간 이벤트 트리거가 아니라, ETL 주기에 맞춘 배치성 polling)
@@ -93,6 +93,15 @@ CREATE INDEX IF NOT EXISTS idx_logs_raw_unembedded
 ## 3. 시나리오 2 (UC2) — API 호출 기반 Spec In/Out 판정
 
 ### 3.1 입력 데이터 구조 (부서 정의 스키마 예시)
+
+> **이 절의 JSON은 초안 가정이다.** 실제 백엔드(로컬 클론 `ftpmodule/`, 코드네임 `fleet`)의
+> 계약은 다르다 — `data`와 `spec`이 한 응답으로 오지 않고, **item 실행**(`POST
+> /servers/{id}/items/{item}` — `focal`/`overlay`/`focalspec`/`overlayspec` 등, 실측값)과
+> **spec 판정 기준 조회**(`GET /spec/map` — `spec_criteria`/`spec_notes`, 판정 기준)가
+> **별도 호출**이다. 실제 구현 시에는 아래 예시 대신 `ftpmodule/README.api.md`(HTTP 계약)와
+> `ftpmodule/fleet/processing/parse/<item>/interface.md`(item별 레코드 스키마)를 그대로
+> 따르고, `resolve_data_and_spec()`/`asml_api_client.py`에서 두 호출을 조합하는 형태로
+> 설계를 조정한다. 상세: `CLAUDE.md` "기존 백엔드 참고 자료" 섹션.
 
 ```json
 {
@@ -307,7 +316,7 @@ async def resolve_data_and_spec(req: SpecCheckRequest) -> tuple[dict, dict]:
     )
 ```
 
-프론트(HTML 페이지)가 이미 계산된 데이터를 들고 있으면 그걸 그대로 넘기고, 없으면 백엔드가 identifier만으로 DB/API에서 직접 조회하도록 이중 경로를 열어둡니다.
+프론트(HTML 페이지)가 이미 계산된 데이터를 들고 있으면 그걸 그대로 넘기고, 없으면 백엔드가 identifier만으로 DB/API에서 직접 조회하도록 이중 경로를 열어둡니다. `inline_data`가 없는 identifier 조회 경로의 실제 구현은 `ftpmodule`의 item 실행 + `/spec/map` 조합이 될 가능성이 높으므로(§3.1 참고), `repo.fetch_measurement_and_spec()` 설계 시 `ftpmodule/README.api.md`를 먼저 확인한다.
 
 ### 7.5 ID Dump 흐름
 

@@ -39,15 +39,23 @@ class Settings(BaseSettings):
     asml_api_base: str | None = None
     asml_api_key: str | None = None
 
-    # --- 임베딩 동기화 워커 / 청킹 파라미터 (TBD 기본값, Phase 5 실측 튜닝 대상) ---
+    # --- 임베딩 동기화 워커 / 청킹 파라미터 ---
     embedding_sync_poll_interval_sec: int = 300
     embedding_sync_batch_size: int = 200
     chunk_session_gap_sec: int = 600
+    # chunk_error_window_before/after=5: Phase 5(scripts/evaluate_chunk_window.py)에서
+    # 합성 이상감지->복구 시나리오로 실측 확정. 5 미만이면 복구 조치 로그가 청크에서
+    # 잘려나가고, 5보다 크게 키워도 복구 커버리지는 더 늘지 않고 무관한 정상 로그만
+    # 늘어 청크 크기가 커진다 (scripts/golden_set/ 참고).
     chunk_error_window_before: int = 5
     chunk_error_window_after: int = 5
 
     # --- Spec-check (Phase 3~4) ---
-    spec_check_margin_threshold_pct: float = 10.0
+    # 10.0 -> 15.0: Phase 5(scripts/evaluate_golden_set.py) 골든셋 평가에서 실측 확정.
+    # 8개 케이스(OOS 2건 + margin 12/18/30/60/85% IN_SPEC 6건)에 대해 5/10/15/20/25%
+    # 후보를 스윕한 결과 15%가 게이트 정확도 100%(다른 값은 88%)로 유일하게 전부
+    # 일치했다 — 자세한 수치는 scripts/golden_set/last_run_report.json 참고.
+    spec_check_margin_threshold_pct: float = 15.0
 
     # --- HTTP 클라이언트 공통 (httpx + tenacity) ---
     embedding_http_timeout_sec: float = 30.0

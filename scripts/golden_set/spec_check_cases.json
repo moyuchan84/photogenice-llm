@@ -1,0 +1,129 @@
+{
+  "_comment": "Phase 5(Session 12) 평가용 골든셋. 부서가 제공할 실제 과거 OOS 이력(00-requirements.md §11 TBD)이 아직 없어, ASML 리소그래피 도메인에서 흔한 8개 시나리오(overlay/focus/dose/CD/온도/파티클)를 근거 있게 합성했다. 실제 이력이 확보되면 이 파일을 교체/확장하고 evaluate_golden_set.py는 그대로 재사용한다. gold.requires_explanation은 '엔지니어가 원인 설명을 원할 것인가'에 대한 도메인 판단이며, margin_pct 임계치 튜닝의 정답 기준으로 쓰인다.",
+  "cases": [
+    {
+      "case_id": "OOS-001-overlay",
+      "equipment_id": "LITHO-07",
+      "parameter": "overlay_x",
+      "unit": "nm",
+      "measured_value": 7.8,
+      "spec": { "lsl": -5.0, "usl": 5.0, "target": 0.0 },
+      "gold": { "requires_explanation": true },
+      "expected_error_codes": ["OVL-203"],
+      "expected_keywords": ["파티클", "레티클", "오염"],
+      "seed_chunks": [
+        { "days_ago": 12, "relevant": true, "error_codes": ["OVL-203"], "chunk_text": "[설비 LITHO-07] 레티클 표면 파티클 오염으로 overlay_x 재현성 저하 발생. 파티클 검사 후 레티클 클리닝 진행, 클리닝 완료 후 overlay 정렬 정상 범위로 복귀." },
+        { "days_ago": 40, "relevant": true, "error_codes": ["OVL-203"], "chunk_text": "[설비 LITHO-07] overlay_x 스펙 이탈. 원인 조사 결과 레티클 스테이지 하부 파티클 오염이 확인됨. 레티클 교체 및 클리닝 절차 수행 후 정상화." },
+        { "days_ago": 65, "relevant": true, "error_codes": ["OVL-203"], "chunk_text": "[설비 LITHO-07] 동일 로트에서 overlay_x 편차 증가, 레티클 파티클 오염이 반복 원인으로 지목됨. 정기 클리닝 주기 단축 권고." },
+        { "days_ago": 5, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-07] 정기 PM(예방정비) 완료. 진공 챔버 압력, 온도 모두 정상 범위. 특이사항 없음." },
+        { "days_ago": 20, "relevant": false, "error_codes": ["CHM-011"], "chunk_text": "[설비 LITHO-07] 챔버 압력 일시적 변동 감지. 자동 보정 로직으로 즉시 정상 복귀, 공정 영향 없음." },
+        { "days_ago": 30, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-07] 레시피 변경(신규 레이어 추가) 적용 후 재부팅. 초기 웨이퍼 결과 모두 정상 범위 확인." }
+      ]
+    },
+    {
+      "case_id": "OOS-002-focus",
+      "equipment_id": "LITHO-12",
+      "parameter": "focus",
+      "unit": "nm",
+      "measured_value": -55.0,
+      "spec": { "lsl": -40.0, "usl": 40.0, "target": 0.0 },
+      "gold": { "requires_explanation": true },
+      "expected_error_codes": ["FOC-114"],
+      "expected_keywords": ["스테이지", "서보", "드리프트"],
+      "seed_chunks": [
+        { "days_ago": 8, "relevant": true, "error_codes": ["FOC-114"], "chunk_text": "[설비 LITHO-12] focus 값이 음의 방향으로 편이(drift). 웨이퍼 스테이지 Z축 서보 드리프트가 원인으로 확인됨. 서보 재캘리브레이션 후 focus 정상 복귀." },
+        { "days_ago": 33, "relevant": true, "error_codes": ["FOC-114"], "chunk_text": "[설비 LITHO-12] focus 스펙 이탈 발생. 웨이퍼 스테이지 서보 모터 드리프트 누적이 원인. 스테이지 서보 파라미터 재조정 진행." },
+        { "days_ago": 70, "relevant": true, "error_codes": ["FOC-114"], "chunk_text": "[설비 LITHO-12] 반복적인 focus 저하. 스테이지 서보 드리프트로 인한 Z축 위치 오차 확인, 서보 유닛 부품 교체 권고." },
+        { "days_ago": 3, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-12] 정기 캘리브레이션 완료. focus/dose 모두 정상 범위 내 확인." },
+        { "days_ago": 18, "relevant": false, "error_codes": ["ILM-005"], "chunk_text": "[설비 LITHO-12] 조명계 밝기 일시 저하 경고. 램프 워밍업 재수행 후 정상 복귀, 공정 영향 없음." },
+        { "days_ago": 45, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-12] 소프트웨어 업데이트 적용, 재부팅 후 정상 기동 확인." }
+      ]
+    },
+    {
+      "case_id": "NEAR-005-dose",
+      "equipment_id": "LITHO-09",
+      "parameter": "dose",
+      "unit": "mJ/cm2",
+      "measured_value": 28.1,
+      "spec": { "lsl": 28.0, "usl": 32.0, "target": 30.0 },
+      "gold": { "requires_explanation": true },
+      "expected_error_codes": ["DOS-077"],
+      "expected_keywords": ["램프", "노화", "출력"],
+      "seed_chunks": [
+        { "days_ago": 10, "relevant": true, "error_codes": ["DOS-077"], "chunk_text": "[설비 LITHO-09] dose가 LSL에 근접. 노광 램프 출력 노화로 인한 점진적 dose 하락 경향 확인. 램프 사용시간 임계치 초과, 교체 필요." },
+        { "days_ago": 38, "relevant": true, "error_codes": ["DOS-077"], "chunk_text": "[설비 LITHO-09] dose 하락 경향 지속. 램프 출력 노화 곡선과 일치. 램프 교체 후 dose 목표값으로 회복됨." },
+        { "days_ago": 60, "relevant": true, "error_codes": ["DOS-077"], "chunk_text": "[설비 LITHO-09] dose 저하 재발. 노광 램프 노화로 인한 출력 저하가 반복 원인. 예방적 램프 교체 주기 단축 권고." },
+        { "days_ago": 6, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-09] 정기 PM 완료, 모든 파라미터 정상." },
+        { "days_ago": 22, "relevant": false, "error_codes": ["CHM-011"], "chunk_text": "[설비 LITHO-09] 챔버 압력 경고, 자동 보정으로 정상 복귀." },
+        { "days_ago": 50, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-09] 레시피 변경 적용, 초기 웨이퍼 결과 정상 범위." }
+      ]
+    },
+    {
+      "case_id": "NEAR-012-overlay-y",
+      "equipment_id": "LITHO-15",
+      "parameter": "overlay_y",
+      "unit": "nm",
+      "measured_value": 5.28,
+      "spec": { "lsl": -6.0, "usl": 6.0, "target": 0.0 },
+      "gold": { "requires_explanation": true },
+      "expected_error_codes": ["ALN-042"],
+      "expected_keywords": ["얼라인먼트", "마크", "신호"],
+      "seed_chunks": [
+        { "days_ago": 9, "relevant": true, "error_codes": ["ALN-042"], "chunk_text": "[설비 LITHO-15] overlay_y가 USL에 근접. 얼라인먼트 마크 신호 강도 저하로 인한 인식 오차 누적이 원인으로 추정됨. 마크 클리닝 후 정상 복귀." },
+        { "days_ago": 35, "relevant": true, "error_codes": ["ALN-042"], "chunk_text": "[설비 LITHO-15] overlay_y 편차 증가. 얼라인먼트 마크 신호 대 잡음비 저하가 확인됨. 마크 인식 알고리즘 파라미터 재조정." },
+        { "days_ago": 58, "relevant": true, "error_codes": ["ALN-042"], "chunk_text": "[설비 LITHO-15] 유사 패턴의 overlay_y 편이. 얼라인먼트 마크 신호 오차 누적이 반복 원인. 마크 정기 점검 주기 단축 권고." },
+        { "days_ago": 4, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-15] 정기 PM 완료, 이상 없음." },
+        { "days_ago": 16, "relevant": false, "error_codes": ["ILM-005"], "chunk_text": "[설비 LITHO-15] 조명계 경고 발생, 워밍업 재수행 후 정상." },
+        { "days_ago": 42, "relevant": false, "error_codes": [], "chunk_text": "[설비 LITHO-15] 소프트웨어 업데이트, 재기동 후 정상 확인." }
+      ]
+    },
+    {
+      "case_id": "COMFORT-018-cd",
+      "equipment_id": "LITHO-03",
+      "parameter": "cd_mean",
+      "unit": "nm",
+      "measured_value": 54.1,
+      "spec": { "lsl": 45.0, "usl": 55.0, "target": 50.0 },
+      "gold": { "requires_explanation": false },
+      "expected_error_codes": [],
+      "expected_keywords": [],
+      "seed_chunks": []
+    },
+    {
+      "case_id": "COMFORT-030-temp",
+      "equipment_id": "LITHO-22",
+      "parameter": "chuck_temperature",
+      "unit": "C",
+      "measured_value": 23.35,
+      "spec": { "lsl": 22.5, "usl": 23.5, "target": 23.0 },
+      "gold": { "requires_explanation": false },
+      "expected_error_codes": [],
+      "expected_keywords": [],
+      "seed_chunks": []
+    },
+    {
+      "case_id": "COMFORT-060-particle",
+      "equipment_id": "LITHO-31",
+      "parameter": "particle_count",
+      "unit": "count",
+      "measured_value": 35.0,
+      "spec": { "lsl": 0.0, "usl": 50.0, "target": 25.0 },
+      "gold": { "requires_explanation": false },
+      "expected_error_codes": [],
+      "expected_keywords": [],
+      "seed_chunks": []
+    },
+    {
+      "case_id": "COMFORT-085-humidity",
+      "equipment_id": "LITHO-40",
+      "parameter": "chamber_humidity",
+      "unit": "%RH",
+      "measured_value": 45.75,
+      "spec": { "lsl": 40.0, "usl": 50.0, "target": 45.0 },
+      "gold": { "requires_explanation": false },
+      "expected_error_codes": [],
+      "expected_keywords": [],
+      "seed_chunks": []
+    }
+  ]
+}

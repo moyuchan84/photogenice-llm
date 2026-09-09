@@ -110,13 +110,14 @@ def test_in_spec_near_margin_threshold_triggers_rag(monkeypatch):
     )
     monkeypatch.setattr(routes_spec_check, "run_rag_judgement", mock_rag)
 
-    # value=10.5, lsl=10, usl=20 -> margin_pct == 10.0 (default threshold), IN_SPEC.
-    resp = _post(_FakeAsmlClient({"value": 10.5}, {"lsl": 10.0, "usl": 20.0}))
+    # value=10.75, lsl=10, usl=20 -> margin_pct == 15.0 (Phase 5 golden셋으로 확정한
+    # 기본 임계치, scripts/golden_set/last_run_report.json 참고), IN_SPEC.
+    resp = _post(_FakeAsmlClient({"value": 10.75}, {"lsl": 10.0, "usl": 20.0}))
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["determination"] == "IN_SPEC"
-    assert body["margin_pct"] == 10.0
+    assert body["margin_pct"] == 15.0
     mock_rag.assert_called_once()
 
 

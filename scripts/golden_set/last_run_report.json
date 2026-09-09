@@ -1,0 +1,94 @@
+{
+  "golden_set": "D:\\code\\samsung\\asmr-rag\\scripts\\golden_set\\spec_check_cases.json",
+  "case_count": 8,
+  "rag_case_count": 4,
+  "gate_sweep": [
+    {
+      "threshold": 5.0,
+      "accuracy": 0.875,
+      "unnecessary_rag_rate": 0.0,
+      "missed_explanation_rate": 0.25,
+      "wrong_case_ids": [
+        "NEAR-012-overlay-y"
+      ]
+    },
+    {
+      "threshold": 10.0,
+      "accuracy": 0.875,
+      "unnecessary_rag_rate": 0.0,
+      "missed_explanation_rate": 0.25,
+      "wrong_case_ids": [
+        "NEAR-012-overlay-y"
+      ]
+    },
+    {
+      "threshold": 15.0,
+      "accuracy": 1.0,
+      "unnecessary_rag_rate": 0.0,
+      "missed_explanation_rate": 0.0,
+      "wrong_case_ids": []
+    },
+    {
+      "threshold": 20.0,
+      "accuracy": 0.875,
+      "unnecessary_rag_rate": 0.25,
+      "missed_explanation_rate": 0.0,
+      "wrong_case_ids": [
+        "COMFORT-018-cd"
+      ]
+    },
+    {
+      "threshold": 25.0,
+      "accuracy": 0.875,
+      "unnecessary_rag_rate": 0.25,
+      "missed_explanation_rate": 0.0,
+      "wrong_case_ids": [
+        "COMFORT-018-cd"
+      ]
+    }
+  ],
+  "recommended_margin_pct_threshold": 15.0,
+  "topk_sweep": [
+    {
+      "top_k": 5,
+      "mean_evidence_hit_rate": 1.0,
+      "mean_keyword_score": 1.0,
+      "mean_confidence": 0.8,
+      "per_case": {
+        "OOS-001-overlay": {
+          "evidence_hit": true,
+          "keyword_score": 1.0,
+          "confidence": 0.8,
+          "retrieved_chunk_count": 5,
+          "conclusion": "레티클 스테이지 하부 파티클 오염으로 인한 overlay_x 스펙 이탈",
+          "recommended_action": "레티클 교체 및 클리닝 절차 수행 후 정상화"
+        },
+        "OOS-002-focus": {
+          "evidence_hit": true,
+          "keyword_score": 1.0,
+          "confidence": 0.8,
+          "retrieved_chunk_count": 5,
+          "conclusion": "웨이퍼 스테이지 Z축 서보 드리프트가 원인으로 확인됨.",
+          "recommended_action": "스테이지 서보 파라미터 재조정 진행."
+        },
+        "NEAR-005-dose": {
+          "evidence_hit": true,
+          "keyword_score": 1.0,
+          "confidence": 0.8,
+          "retrieved_chunk_count": 5,
+          "conclusion": "노광 램프 출력 노화로 인한 점진적 dose 하락 경향이 확인됩니다.",
+          "recommended_action": "램프 교체 필요"
+        },
+        "NEAR-012-overlay-y": {
+          "evidence_hit": true,
+          "keyword_score": 1.0,
+          "confidence": 0.8,
+          "retrieved_chunk_count": 5,
+          "conclusion": "overlay_y 측정값이 spec을 벗어났거나 근접한 것은 얼라인먼트 마크 신호 강도 저하로 인한 인식 오차 누적이 원인으로 추정됨.",
+          "recommended_action": "마크 클리닝을 수행하여 정상 복귀를 권고."
+        }
+      }
+    }
+  ],
+  "recommended_top_k": 5
+}

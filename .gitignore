@@ -6,3 +6,6 @@ __pycache__/
 .env
 .env.local
 .claude/settings.local.json
+
+# Cloned existing backend repo (ASML log parsing/API/scheduler) — separate git history, not part of this repo
+ftpmodule/
