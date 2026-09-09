@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASML RAG 구현 가이드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F6F9;
+    --surface:#FFFFFF;
+    --surface-sunken:#F0F2F6;
+    --border:#E1E4EA;
+    --text:#161A22;
+    --muted:#5B6472;
+    --accent:#2D4FB0;
+    --accent-strong:#1E3B8F;
+    --accent-soft:#EAEFFB;
+    --warn:#B5650B;
+    --warn-soft:#FBF0E1;
+    --ok:#1D7A4C;
+    --ok-soft:#E7F5EC;
+    --danger:#B3402F;
+    --danger-soft:#FBEAE6;
+    --code-bg:#111726;
+    --code-text:#D7DEEA;
+    --code-accent:#7EE0B8;
+    --code-string:#F0C674;
+    --radius:6px;
+    --shadow-card: 0 1px 2px rgba(22,26,34,0.04);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0E1015;
+      --surface:#161A22;
+      --surface-sunken:#1D222C;
+      --border:#2A303C;
+      --text:#E7EAF0;
+      --muted:#9099A8;
+      --accent:#7C9BEF;
+      --accent-strong:#A8BEF5;
+      --accent-soft:#1C2740;
+      --warn:#E0A254;
+      --warn-soft:#332512;
+      --ok:#5FC38B;
+      --ok-soft:#132A1E;
+      --danger:#E28776;
+      --danger-soft:#331B16;
+      --code-bg:#0A0D16;
+      --code-text:#D7DEEA;
+      --code-accent:#7EE0B8;
+      --code-string:#F0C674;
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0E1015;
+    --surface:#161A22;
+    --surface-sunken:#1D222C;
+    --border:#2A303C;
+    --text:#E7EAF0;
+    --muted:#9099A8;
+    --accent:#7C9BEF;
+    --accent-strong:#A8BEF5;
+    --accent-soft:#1C2740;
+    --warn:#E0A254;
+    --warn-soft:#332512;
+    --ok:#5FC38B;
+    --ok-soft:#132A1E;
+    --danger:#E28776;
+    --danger-soft:#331B16;
+    --code-bg:#0A0D16;
+    --code-text:#D7DEEA;
+    --code-accent:#7EE0B8;
+    --code-string:#F0C674;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans KR', -apple-system, sans-serif;
+    line-height:1.65;
+    font-size:15.5px;
+  }
+  ::selection{ background:var(--accent-soft); color:var(--accent-strong); }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  a{color:var(--accent);}
+  code{font-family:'IBM Plex Mono', monospace; font-size:0.92em; background:var(--surface-sunken); padding:1px 5px; border-radius:4px;}
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---- layout shell ---- */
+  .shell{ display:grid; grid-template-columns:250px 1fr; max-width:1220px; margin:0 auto; }
+  nav.toc{
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    padding:36px 20px 36px 8px; border-right:1px solid var(--border);
+  }
+  nav.toc .brand{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:.02em;
+    color:var(--muted); margin-bottom:6px;
+  }
+  nav.toc .brand-sub{ font-size:11px; color:var(--muted); margin-bottom:22px; opacity:.75; }
+  nav.toc a{
+    display:block; color:var(--text); text-decoration:none; font-size:13.5px;
+    padding:7px 10px; border-radius:var(--radius); margin-bottom:2px;
+  }
+  nav.toc a:hover{ background:var(--accent-soft); color:var(--accent); }
+  nav.toc .num{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:11px; margin-right:6px; }
+
+  main{ padding:48px 44px 100px; min-width:0; }
+  header.hero{ padding-bottom:34px; margin-bottom:44px; border-bottom:1px solid var(--border); }
+  header.hero .kicker{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--accent); margin-bottom:14px; }
+  header.hero h1{ font-size:32px; line-height:1.28; margin:0 0 14px; font-weight:700; max-width:640px; text-wrap:balance; }
+  header.hero p.lead{ max-width:620px; color:var(--muted); font-size:16px; margin:0 0 20px; }
+
+  .phase-strip{ display:flex; gap:6px; flex-wrap:wrap; }
+  .phase-pill{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; padding:4px 9px; border-radius:20px;
+    border:1px solid var(--border); background:var(--surface); color:var(--muted);
+  }
+  .phase-pill.done{ background:var(--ok-soft); border-color:var(--ok); color:var(--ok); }
+  .phase-pill.todo{ background:var(--surface); color:var(--muted); }
+
+  section{ margin-bottom:64px; scroll-margin-top:24px; }
+  section h2{ font-size:22px; margin:0 0 8px; display:flex; align-items:baseline; gap:10px; text-wrap:balance; }
+  section h2 .idx{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--accent); font-weight:500; }
+  section > p.section-desc{ color:var(--muted); max-width:700px; margin:0 0 26px; }
+  h3{ font-size:16px; margin:30px 0 12px; }
+  h3 .h3-file{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted); font-weight:400; }
+
+  /* ---- principle cards ---- */
+  .principles{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px; }
+  .principle{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow-card); }
+  .principle .p-num{ font-family:'IBM Plex Mono', monospace; color:var(--accent); font-size:12px; margin-bottom:8px; }
+  .principle h4{ margin:0 0 6px; font-size:14.5px; }
+  .principle p{ margin:0; color:var(--muted); font-size:13.5px; }
+
+  /* ---- directory tree ---- */
+  .tree{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:22px 24px; box-shadow:var(--shadow-card); overflow-x:auto; }
+  .tree-row{ display:grid; grid-template-columns:230px 1fr; gap:16px; padding:6px 0; align-items:baseline; }
+  .tree-row + .tree-row{ border-top:1px dashed var(--border); }
+  .tree-path{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--text); white-space:nowrap; }
+  .tree-path.dir{ color:var(--accent); font-weight:600; }
+  .tree-desc{ color:var(--muted); font-size:13px; }
+
+  /* ---- diagram ---- */
+  .diagram{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:28px 26px; box-shadow:var(--shadow-card); overflow-x:auto; }
+  .d-row{ display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .d-arrow{ text-align:center; color:var(--muted); font-size:13px; margin:8px 0; font-family:'IBM Plex Mono', monospace; }
+  .box{ border:1.5px solid var(--accent); background:var(--accent-soft); border-radius:var(--radius); padding:12px 16px; font-size:13px; min-width:150px; text-align:center; }
+  .box .b-title{ font-weight:600; margin-bottom:3px; }
+  .box .b-sub{ color:var(--muted); font-size:11.5px; font-family:'IBM Plex Mono', monospace; }
+  .box.wide{ min-width:340px; }
+  .box.pure{ border-style:dashed; }
+  .box.branch-ok{ border-color:var(--ok); background:var(--ok-soft); }
+  .box.branch-danger{ border-color:var(--danger); background:var(--danger-soft); }
+  .layer-label{ text-align:center; font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); margin-top:-4px; margin-bottom:6px; }
+  .cond-split{ display:flex; gap:18px; justify-content:center; align-items:flex-start; flex-wrap:wrap; margin:10px 0; }
+  .cond-branch{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .cond-branch .cond-label{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted); }
+
+  /* ---- dependency table ---- */
+  .dep-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-card); }
+  table.dep{ width:100%; border-collapse:collapse; background:var(--surface); font-size:13px; min-width:640px; }
+  table.dep th{ text-align:left; background:var(--surface-sunken); font-size:11.5px; font-family:'IBM Plex Mono', monospace; color:var(--muted); padding:10px 16px; font-weight:500; white-space:nowrap; }
+  table.dep td{ padding:10px 16px; border-top:1px solid var(--border); vertical-align:top; }
+  table.dep td.mod{ font-family:'IBM Plex Mono', monospace; color:var(--accent-strong); font-weight:600; white-space:nowrap; }
+  table.dep td.list{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  table.dep tr.pure td.mod::after{ content:" (순수)"; font-weight:400; color:var(--ok); font-family:'IBM Plex Sans KR', sans-serif; font-size:11px; }
+
+  /* ---- code / curl blocks ---- */
+  .code-block{ background:var(--code-bg); color:var(--code-text); border-radius:8px; overflow:hidden; box-shadow:var(--shadow-card); }
+  .code-block .cb-head{ display:flex; justify-content:space-between; align-items:center; padding:9px 16px; font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--code-accent); border-bottom:1px solid rgba(255,255,255,0.08); }
+  .code-block pre{ margin:0; padding:16px; overflow-x:auto; font-family:'IBM Plex Mono', monospace; font-size:12.8px; line-height:1.7; }
+  .code-block .k{ color:var(--code-accent); }
+  .code-block .s{ color:var(--code-string); }
+  .code-block .m{ color:#9FB4E8; }
+  .api-pair{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; }
+  .api-pair .code-block pre{ font-size:12px; }
+
+  /* ---- endpoint reference cards ---- */
+  .endpoint{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px; margin-bottom:22px; box-shadow:var(--shadow-card); }
+  .endpoint .ep-head{ display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .ep-method{ font-family:'IBM Plex Mono', monospace; font-size:11px; font-weight:600; background:var(--accent); color:#fff; padding:3px 8px; border-radius:4px; }
+  .ep-path{ font-family:'IBM Plex Mono', monospace; font-size:14.5px; font-weight:600; }
+  .ep-usecase{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--muted); margin-left:auto; }
+  .ep-desc{ color:var(--muted); font-size:13.5px; margin:6px 0 16px; max-width:640px; }
+
+  .determ-pill{ font-family:'IBM Plex Mono', monospace; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; }
+  .determ-pill.ok{ background:var(--ok-soft); color:var(--ok); }
+  .determ-pill.danger{ background:var(--danger-soft); color:var(--danger); }
+
+  .formula{ background:var(--surface-sunken); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; font-family:'IBM Plex Mono', monospace; font-size:12.8px; color:var(--text); margin:14px 0; overflow-x:auto; white-space:nowrap; }
+  .formula .fc{ color:var(--muted); }
+
+  /* ---- query chips ---- */
+  .query-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+  .query-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow-card); }
+  .query-card .q-tag{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--accent); margin-bottom:6px; display:block; }
+  .query-card p{ margin:0; font-size:13.5px; }
+  .query-card .q-note{ color:var(--muted); font-size:12px; margin-top:6px; }
+
+  .auto-query-note{ display:flex; gap:12px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:var(--radius); padding:14px 16px; margin-top:16px; }
+  .auto-query-note .aq-mark{ font-family:'IBM Plex Mono', monospace; color:var(--warn); font-size:13px; }
+  .auto-query-note p{ margin:0; font-size:13px; }
+
+  /* ---- debug config table ---- */
+  table.stack{ width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  table.stack th{ text-align:left; background:var(--surface-sunken); font-size:12px; font-family:'IBM Plex Mono', monospace; color:var(--muted); padding:10px 16px; font-weight:500; }
+  table.stack td{ padding:10px 16px; border-top:1px solid var(--border); font-size:13.5px; }
+
+  .step-list{ counter-reset:step; list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:10px; }
+  .step-list li{ counter-increment:step; display:grid; grid-template-columns:26px 1fr; gap:12px; font-size:13.5px; }
+  .step-list li::before{ content:counter(step); font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--accent); background:var(--accent-soft); width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+
+  .ref-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .ref-item{ display:flex; justify-content:space-between; gap:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; font-size:13px; }
+  .ref-item .ref-name{ font-family:'IBM Plex Mono', monospace; color:var(--accent-strong); }
+  .ref-item .ref-desc{ color:var(--muted); text-align:right; }
+
+  footer{ border-top:1px solid var(--border); padding-top:24px; color:var(--muted); font-size:12.5px; }
+
+  @media (max-width:900px){
+    .shell{ grid-template-columns:1fr; }
+    nav.toc{ position:static; height:auto; border-right:none; border-bottom:1px solid var(--border); }
+    main{ padding:32px 20px 80px; }
+    .principles, .api-pair, .query-grid, .ref-grid{ grid-template-columns:1fr; }
+    .d-row{ flex-direction:column; align-items:center; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="toc">
+    <div class="brand">ASML LOG RAG</div>
+    <div class="brand-sub">구현 가이드 · Phase 4 기준</div>
+    <a href="#overview"><span class="num">00</span>개요</a>
+    <a href="#dirs"><span class="num">01</span>디렉토리 구조</a>
+    <a href="#deps"><span class="num">02</span>모듈 의존관계</a>
+    <a href="#uc1"><span class="num">03</span>UC1 호출 흐름</a>
+    <a href="#uc2"><span class="num">04</span>UC2 호출 흐름</a>
+    <a href="#sync"><span class="num">05</span>백그라운드 동기화</a>
+    <a href="#api"><span class="num">06</span>API 호출해보기</a>
+    <a href="#asking"><span class="num">07</span>LLM에게 질문하기</a>
+    <a href="#debug"><span class="num">08</span>로컬 실행·디버그</a>
+    <a href="#refs"><span class="num">09</span>참고 문서</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="kicker">IMPLEMENTATION GUIDE · AS-BUILT</div>
+      <h1>ASML 설비 로그 RAG 시스템<br>구현 가이드</h1>
+      <p class="lead">
+        <code>asml-rag-overview.html</code>이 구현 전 아키텍처 논의 자료였다면, 이 문서는 실제로
+        작성된 코드 기준으로 모듈이 서로 어떻게 참조되고, 요청이 어떤 경로로 흐르며, API와 LLM에
+        어떻게 질의하는지를 정리한 as-built 가이드입니다.
+      </p>
+      <div class="phase-strip">
+        <span class="phase-pill done">Phase 0 하네스</span>
+        <span class="phase-pill done">Phase 1 임베딩 동기화</span>
+        <span class="phase-pill done">Phase 2 UC1 History</span>
+        <span class="phase-pill done">Phase 3 Spec Evaluator</span>
+        <span class="phase-pill done">Phase 4 UC2 API 결합</span>
+        <span class="phase-pill todo">Phase 5 평가·튜닝</span>
+        <span class="phase-pill todo">Phase 6 기능 확장</span>
+        <span class="phase-pill todo">Phase 7 MCP(선택)</span>
+      </div>
+    </header>
+
+    <!-- 00 개요 -->
+    <section id="overview">
+      <h2><span class="idx">00</span>개요</h2>
+      <p class="section-desc">
+        두 유즈케이스가 하나의 RAG 코어(<code>run_rag_judgement()</code>)를 공유합니다. UC1은 자연어
+        질의를 받아 항상 검색·판정을 수행하고, UC2는 결정론적 스펙 판정을 먼저 계산한 뒤
+        OUT_OF_SPEC이거나 스펙 여유가 부족할 때만 같은 RAG 코어를 호출합니다.
+      </p>
+      <div class="principles">
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 01</div>
+          <h4>판정과 설명의 분리</h4>
+          <p><code>rag/spec_evaluator.py</code>는 외부 의존성이 전혀 없는 순수 함수이며, LLM은
+            이미 계산된 판정 결과에 대한 설명만 생성합니다. 숫자를 재계산하지 않습니다.</p>
+        </div>
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 02</div>
+          <h4>1개 RAG 코어 공유</h4>
+          <p>UC1(<code>routes_history.py</code>)과 UC2(<code>routes_spec_check.py</code>)는
+            <code>rag/core.py</code>의 동일한 함수를 <code>use_case</code>/<code>eval_id</code>
+            인자만 다르게 호출합니다.</p>
+        </div>
+        <div class="principle">
+          <div class="p-num">PRINCIPLE 03</div>
+          <h4>메타데이터 필터 우선</h4>
+          <p><code>hybrid_search()</code>는 <code>feature_type</code> 필터 없이 전체 테이블에
+            벡터 유사도만으로 검색하는 것을 금지하며, 항상 구조화 필터를 먼저 적용합니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 디렉토리 구조 -->
+    <section id="dirs">
+      <h2><span class="idx">01</span>디렉토리 구조</h2>
+      <p class="section-desc">저장소 루트가 곧 패키지 루트입니다 (<code>app/</code> 접두사 없음).</p>
+      <div class="tree">
+        <div class="tree-row"><div class="tree-path">main.py</div><div class="tree-desc">FastAPI 진입점 — lifespan에서 pool/클라이언트 1회 생성, 라우터 등록</div></div>
+        <div class="tree-row"><div class="tree-path">config.py</div><div class="tree-desc">Settings(pydantic-settings) — 모든 모듈이 get_settings()로만 접근</div></div>
+        <div class="tree-row"><div class="tree-path dir">api/</div><div class="tree-desc">FastAPI 라우터 + 의존성 주입</div></div>
+        <div class="tree-row"><div class="tree-path">├─ routes_history.py</div><div class="tree-desc">UC1: POST /query/history</div></div>
+        <div class="tree-row"><div class="tree-path">├─ routes_spec_check.py</div><div class="tree-desc">UC2: POST /query/spec-check</div></div>
+        <div class="tree-row"><div class="tree-path">└─ deps.py</div><div class="tree-desc">DbPool/EmbeddingClientDep/LLMClientDep/AsmlApiClientDep/SettingsDep</div></div>
+        <div class="tree-row"><div class="tree-path dir">rag/</div><div class="tree-desc">RAG 코어 — UC1/UC2 공용</div></div>
+        <div class="tree-row"><div class="tree-path">├─ core.py</div><div class="tree-desc">run_rag_judgement() — 임베딩→검색→프롬프트→LLM→저장</div></div>
+        <div class="tree-row"><div class="tree-path">├─ retriever.py</div><div class="tree-desc">hybrid_search() — feature_type 필터 + pgvector 코사인 검색</div></div>
+        <div class="tree-row"><div class="tree-path">├─ prompt.py</div><div class="tree-desc">JSON 강제 출력 스키마를 포함한 시스템/유저 프롬프트 빌더</div></div>
+        <div class="tree-row"><div class="tree-path">└─ spec_evaluator.py</div><div class="tree-desc">evaluate_spec() — 순수 함수, IN_SPEC/OUT_OF_SPEC 판정</div></div>
+        <div class="tree-row"><div class="tree-path dir">clients/</div><div class="tree-desc">외부 API 어댑터 (httpx + tenacity 재시도/타임아웃 공통)</div></div>
+        <div class="tree-row"><div class="tree-path">├─ embedding_client.py</div><div class="tree-desc">BGE-M3 — ollama(로컬) / internal(사내, TBD) 전환</div></div>
+        <div class="tree-row"><div class="tree-path">├─ llm_client.py</div><div class="tree-desc">Gemma4-260430 — ollama / internal 전환, JSON 파싱</div></div>
+        <div class="tree-row"><div class="tree-path">└─ asml_api_client.py</div><div class="tree-desc">부서 ASML API — data+spec pull (엔드포인트 TBD, 계약 격리)</div></div>
+        <div class="tree-row"><div class="tree-path dir">db/</div><div class="tree-desc">스키마 및 저장 쿼리</div></div>
+        <div class="tree-row"><div class="tree-path">├─ schema.sql</div><div class="tree-desc">logs_raw / log_chunks / spec_evaluations / judgements DDL</div></div>
+        <div class="tree-row"><div class="tree-path">└─ repo.py</div><div class="tree-desc">create_pool, save_judgement, save_spec_evaluation</div></div>
+        <div class="tree-row"><div class="tree-path dir">workers/</div><div class="tree-desc">배치·백그라운드 처리</div></div>
+        <div class="tree-row"><div class="tree-path">├─ chunker.py</div><div class="tree-desc">chunk_logs() — 세션/에러 윈도우 청킹, 순수 함수</div></div>
+        <div class="tree-row"><div class="tree-path">└─ embedding_sync_poller.py</div><div class="tree-desc">APScheduler 주기 실행, embedded_at 커서 기반 멱등 polling</div></div>
+        <div class="tree-row"><div class="tree-path dir">scripts/backfill_embeddings.py</div><div class="tree-desc">poller 로직을 재사용한 1회성 전량 백필</div></div>
+        <div class="tree-row"><div class="tree-path dir">models/schemas.py</div><div class="tree-desc">Pydantic 요청/응답 — HistoryQuery*, SpecCheck*</div></div>
+        <div class="tree-row"><div class="tree-path dir">tests/</div><div class="tree-desc">pytest — 순수 함수 단위테스트 + 라우트 단위테스트(의존성 오버라이드) + integration 마커</div></div>
+      </div>
+    </section>
+
+    <!-- 02 모듈 의존관계 -->
+    <section id="deps">
+      <h2><span class="idx">02</span>모듈 의존관계</h2>
+      <p class="section-desc">
+        "순수" 표시가 붙은 두 모듈(<code>spec_evaluator.py</code>, <code>chunker.py</code>)은
+        DB·네트워크·config 어디에도 의존하지 않습니다 — <code>enforce-evaluator-purity.sh</code>
+        훅이 evaluator 파일에 클라이언트 임포트가 섞이는 것을 자동 차단합니다.
+      </p>
+      <div class="dep-wrap">
+        <table class="dep">
+          <tr><th>모듈</th><th>의존 (imports)</th><th>피의존 (imported by)</th></tr>
+          <tr><td class="mod">api/routes_history.py</td><td class="list">api/deps.py · models/schemas.py · rag/core.py</td><td class="list">main.py</td></tr>
+          <tr><td class="mod">api/routes_spec_check.py</td><td class="list">api/deps.py · db/repo.py · models/schemas.py · rag/core.py · rag/spec_evaluator.py</td><td class="list">main.py</td></tr>
+          <tr><td class="mod">api/deps.py</td><td class="list">clients/* · config.py</td><td class="list">routes_history.py · routes_spec_check.py</td></tr>
+          <tr><td class="mod">rag/core.py</td><td class="list">clients/embedding_client.py · clients/llm_client.py · db/repo.py · rag/prompt.py · rag/retriever.py</td><td class="list">routes_history.py · routes_spec_check.py</td></tr>
+          <tr class="pure"><td class="mod">rag/spec_evaluator.py</td><td class="list">— (zero I/O)</td><td class="list">routes_spec_check.py</td></tr>
+          <tr><td class="mod">rag/retriever.py</td><td class="list">asyncpg</td><td class="list">rag/core.py</td></tr>
+          <tr><td class="mod">rag/prompt.py</td><td class="list">rag/retriever.py (타입만)</td><td class="list">rag/core.py</td></tr>
+          <tr><td class="mod">clients/llm_client.py</td><td class="list">config.py</td><td class="list">rag/core.py · api/deps.py · main.py</td></tr>
+          <tr><td class="mod">clients/embedding_client.py</td><td class="list">config.py</td><td class="list">rag/core.py · api/deps.py · main.py · workers/* · scripts/*</td></tr>
+          <tr><td class="mod">clients/asml_api_client.py</td><td class="list">config.py</td><td class="list">api/deps.py · main.py</td></tr>
+          <tr><td class="mod">db/repo.py</td><td class="list">config.py · pgvector</td><td class="list">rag/core.py · routes_spec_check.py · workers/* · scripts/*</td></tr>
+          <tr class="pure"><td class="mod">workers/chunker.py</td><td class="list">— (zero I/O)</td><td class="list">workers/embedding_sync_poller.py</td></tr>
+          <tr><td class="mod">workers/embedding_sync_poller.py</td><td class="list">clients/embedding_client.py · config.py · db/repo.py · workers/chunker.py</td><td class="list">scripts/backfill_embeddings.py</td></tr>
+          <tr><td class="mod">main.py</td><td class="list">api/routes_* · clients/* · config.py · db/repo.py</td><td class="list">(진입점)</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- 03 UC1 -->
+    <section id="uc1">
+      <h2><span class="idx">03</span>UC1 호출 흐름 — <span class="mono">/query/history</span></h2>
+      <p class="section-desc">자연어 질의를 받아 항상 하이브리드 검색 → LLM 판정까지 진행합니다.</p>
+      <div class="diagram">
+        <div class="d-row"><div class="box wide"><div class="b-title">POST /query/history</div><div class="b-sub">routes_history.py</div></div></div>
+        <div class="d-arrow">↓ run_rag_judgement(use_case="history", ...)</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">embedding_client.embed()</div><div class="b-sub">query → vector(1024)</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">hybrid_search()</div><div class="b-sub">rag/retriever.py · feature_type="log_general"</div></div>
+        </div>
+        <div class="d-arrow">↓ RetrievedChunk[]</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">build_system/user_prompt()</div><div class="b-sub">rag/prompt.py</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">llm_client.generate_json()</div><div class="b-sub">JSON 강제 출력 파싱</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">save_judgement()</div><div class="b-sub">db/repo.py → judgements 테이블</div></div>
+        </div>
+        <div class="d-arrow">↓ HistoryQueryResponse</div>
+      </div>
+    </section>
+
+    <!-- 04 UC2 -->
+    <section id="uc2">
+      <h2><span class="idx">04</span>UC2 호출 흐름 — <span class="mono">/query/spec-check</span></h2>
+      <p class="section-desc">
+        판정은 항상 결정론적으로 계산·저장되고, LLM 설명은 <code>OUT_OF_SPEC</code>이거나
+        <code>margin_pct</code>가 임계치(기본 10%) 이하일 때만 조건부로 실행됩니다 (FR-2.3).
+      </p>
+      <div class="diagram">
+        <div class="d-row"><div class="box wide"><div class="b-title">POST /query/spec-check</div><div class="b-sub">routes_spec_check.py · {equipment_id, parameter}</div></div></div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">asml_client.fetch_data_and_spec()</div><div class="b-sub">clients/asml_api_client.py · httpx+tenacity</div></div>
+        </div>
+        <div class="d-arrow">↓ (data, spec)</div>
+        <div class="d-row">
+          <div class="box pure"><div class="b-title">evaluate_spec(data, spec)</div><div class="b-sub">rag/spec_evaluator.py · 순수 함수, LLM 미사용</div></div>
+        </div>
+        <div class="d-arrow">↓ SpecResult(determination, margin_pct)</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">save_spec_evaluation()</div><div class="b-sub">db/repo.py → spec_evaluations · 항상 실행</div></div>
+        </div>
+        <div class="d-arrow">↓ eval_id</div>
+        <div class="cond-split">
+          <div class="cond-branch">
+            <div class="cond-label">margin_pct &gt; 임계치 AND IN_SPEC</div>
+            <div class="box branch-ok"><div class="b-title">RAG 생략</div><div class="b-sub">determination/margin_pct만 응답</div></div>
+          </div>
+          <div class="cond-branch">
+            <div class="cond-label">OUT_OF_SPEC OR margin_pct ≤ 임계치</div>
+            <div class="box branch-danger"><div class="b-title">run_rag_judgement()</div><div class="b-sub">use_case="spec_check", eval_id 연계</div></div>
+          </div>
+        </div>
+        <div class="d-arrow">↓ (오른쪽 분기만) rag/core.py — UC1과 동일 코어</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">save_judgement()</div><div class="b-sub">eval_id로 spec_evaluations와 연계 저장</div></div>
+        </div>
+        <div class="d-arrow">↓ SpecCheckResponse</div>
+      </div>
+
+      <h3>margin_pct 계산식 <span class="h3-file">rag/spec_evaluator.py</span></h3>
+      <div class="formula">
+margin_pct = (1 − |value − center| / half_range) × 100 <span class="fc">// center=(usl+lsl)/2, half_range=(usl−lsl)/2</span><br>
+<span class="fc">// lsl == usl (스펙 폭 0)이면: value == center ? 100.0 : −100.0</span>
+      </div>
+    </section>
+
+    <!-- 05 백그라운드 동기화 -->
+    <section id="sync">
+      <h2><span class="idx">05</span>백그라운드 동기화</h2>
+      <p class="section-desc"><code>logs_raw.embedded_at IS NULL</code> 커서 기반 polling으로, 중단 후
+        재시작해도 중복 임베딩 없이 이어서 처리됩니다.</p>
+      <div class="diagram">
+        <div class="d-row">
+          <div class="box"><div class="b-title">APScheduler</div><div class="b-sub">EMBEDDING_SYNC_POLL_INTERVAL_SEC 주기</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box"><div class="b-title">SELECT logs_raw</div><div class="b-sub">WHERE embedded_at IS NULL LIMIT batch_size</div></div>
+        </div>
+        <div class="d-arrow">↓</div>
+        <div class="d-row">
+          <div class="box pure"><div class="b-title">chunk_logs()</div><div class="b-sub">workers/chunker.py · 세션/에러 윈도우, 순수 함수</div></div>
+        </div>
+        <div class="d-arrow">↓ (트랜잭션 밖) embedding_client.embed()</div>
+        <div class="d-row">
+          <div class="box wide"><div class="b-title">트랜잭션: INSERT log_chunks + UPDATE embedded_at</div><div class="b-sub">청크 밖 row도 함께 embedded_at 갱신 → 무한 재조회 방지</div></div>
+        </div>
+      </div>
+      <p style="color:var(--muted); font-size:13.5px; margin-top:16px;">
+        <code>scripts/backfill_embeddings.py</code>는 같은 <code>run_embedding_sync_cycle()</code>을
+        <code>processed == 0</code>이 될 때까지 반복 호출하는 1회성 스크립트입니다 — 로직을
+        복제하지 않습니다.
+      </p>
+    </section>
+
+    <!-- 06 API 호출해보기 -->
+    <section id="api">
+      <h2><span class="idx">06</span>API 호출해보기</h2>
+      <p class="section-desc">로컬에서 <code>uvicorn main:app --reload</code> 실행 후 그대로 시도할 수 있습니다.</p>
+
+      <div class="endpoint">
+        <div class="ep-head">
+          <span class="ep-method">POST</span>
+          <span class="ep-path">/query/history</span>
+          <span class="ep-usecase">use_case = "history"</span>
+        </div>
+        <p class="ep-desc">자유 형식 자연어 질의 + 선택적 필터(설비/기간) → 항상 검색 후 LLM 판정.</p>
+        <div class="api-pair">
+          <div class="code-block">
+            <div class="cb-head"><span>request</span><span>curl</span></div>
+            <pre>curl -X POST localhost:8000/query/history \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{
+    "query": "EQ-01에서 최근 반복되는 overlay 정렬 실패 원인이 뭐야?",
+    "equipment_id": "EQ-01",
+    "top_k": 5
+  }'</span></pre>
+          </div>
+          <div class="code-block">
+            <div class="cb-head"><span>response</span><span class="mono">200</span></div>
+            <pre>{
+  <span class="k">"judgement_id"</span>: <span class="m">42</span>,
+  <span class="k">"conclusion"</span>: <span class="s">"..."</span>,
+  <span class="k">"confidence"</span>: <span class="m">0.82</span>,
+  <span class="k">"recommended_action"</span>: <span class="s">"..."</span>,
+  <span class="k">"evidence_chunk_ids"</span>: [<span class="m">101</span>, <span class="m">104</span>]
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="endpoint">
+        <div class="ep-head">
+          <span class="ep-method">POST</span>
+          <span class="ep-path">/query/spec-check</span>
+          <span class="ep-usecase">use_case = "spec_check"</span>
+        </div>
+        <p class="ep-desc">identifier(설비/파라미터)만 전달 — data+spec은 서버가 ASML API에서 직접 pull.</p>
+        <div class="api-pair">
+          <div class="code-block">
+            <div class="cb-head"><span>request</span><span>curl</span></div>
+            <pre>curl -X POST localhost:8000/query/spec-check \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"equipment_id": "EQ-01", "parameter": "focus", "top_k": 5}'</span></pre>
+          </div>
+          <div class="code-block">
+            <div class="cb-head"><span>response — <span class="determ-pill danger">OUT_OF_SPEC</span></span><span class="mono">200</span></div>
+            <pre>{
+  <span class="k">"eval_id"</span>: <span class="m">17</span>, <span class="k">"determination"</span>: <span class="s">"OUT_OF_SPEC"</span>,
+  <span class="k">"margin_pct"</span>: <span class="m">-12.5</span>,
+  <span class="k">"judgement_id"</span>: <span class="m">8</span>, <span class="k">"conclusion"</span>: <span class="s">"..."</span>,
+  <span class="k">"confidence"</span>: <span class="m">0.75</span>, <span class="k">"recommended_action"</span>: <span class="s">"..."</span>
+}</pre>
+          </div>
+        </div>
+        <p style="color:var(--muted); font-size:13px; margin-top:10px;">
+          여유가 충분하면(<span class="determ-pill ok">IN_SPEC</span>, margin_pct &gt; 임계치)
+          <code>judgement_id</code> 이하 필드는 모두 <code>null</code>로 돌아옵니다 — RAG가 아예
+          호출되지 않았기 때문입니다.
+        </p>
+      </div>
+    </section>
+
+    <!-- 07 LLM에게 질문하기 -->
+    <section id="asking">
+      <h2><span class="idx">07</span>LLM에게 질문하기</h2>
+      <p class="section-desc">
+        UC1의 <code>query</code>는 진짜 자유 형식입니다. LLM은 <code>rag/prompt.py</code>의 시스템
+        프롬프트로 항상 아래 JSON 스키마만 반환하도록 강제되며, 제공된 근거(evidence) 밖 내용은
+        추측하지 않도록 지시받습니다.
+      </p>
+      <div class="query-grid">
+        <div class="query-card">
+          <span class="q-tag">일반 원인 질의</span>
+          <p>"EQ-03에서 지난주 반복된 E204 에러의 공통 원인이 뭐야?"</p>
+        </div>
+        <div class="query-card">
+          <span class="q-tag">패턴 비교</span>
+          <p>"포커스 드리프트가 있었던 설비들의 공통점을 알려줘"</p>
+        </div>
+        <div class="query-card">
+          <span class="q-tag">기간 필터 + 조치 이력</span>
+          <p>"최근 한 달 overlay 정렬 실패 사례의 조치 내역을 요약해줘"</p>
+          <p class="q-note">period_start/period_end로 범위 제한 가능</p>
+        </div>
+        <div class="query-card">
+          <span class="q-tag">근거 부족 케이스</span>
+          <p>"EQ-99에서 어제 무슨 일이 있었어?" (관련 청크가 없으면 confidence를 낮게 응답)</p>
+        </div>
+      </div>
+
+      <div class="auto-query-note">
+        <span class="aq-mark">주의</span>
+        <p>UC2는 자유 질의를 받지 않습니다 — <code>routes_spec_check.py</code>의
+          <code>_build_explanation_query()</code>가 measured/lsl/usl/determination/margin_pct를
+          엮어 질의를 자동 생성하고, 조건을 만족할 때만 <code>rag/core.py</code>에 전달합니다.</p>
+      </div>
+    </section>
+
+    <!-- 08 로컬 실행/디버그 -->
+    <section id="debug">
+      <h2><span class="idx">08</span>로컬 실행·디버그</h2>
+      <ol class="step-list">
+        <li><code>.env.example</code>을 <code>.env</code>로 복사, <code>EMBEDDING_PROVIDER</code>/<code>LLM_PROVIDER</code>를 <code>ollama</code>로 두고 <code>ollama pull bge-m3</code>, <code>ollama pull llama3</code></li>
+        <li><code>uv sync</code> (또는 <code>pip install -e .</code>)로 <code>.venv</code> 준비</li>
+        <li>Postgres(+pgvector)에 <code>db/schema.sql</code> 적용 후 <code>uvicorn main:app --reload</code></li>
+        <li><code>pytest -m "not integration"</code>로 순수 함수·라우트 단위테스트 빠르게 확인</li>
+      </ol>
+      <h3 style="margin-top:26px;">VS Code 디버그 설정 <span class="h3-file">.vscode/launch.json</span></h3>
+      <table class="stack">
+        <tr><th>설정 이름</th><th>실행 대상</th></tr>
+        <tr><td>FastAPI: uvicorn main:app</td><td class="mono">uvicorn main:app --reload --port 8000</td></tr>
+        <tr><td>Pytest: current file</td><td class="mono">pytest ${file} -v</td></tr>
+        <tr><td>Pytest: all (non-integration)</td><td class="mono">pytest -v -m "not integration"</td></tr>
+        <tr><td>Pytest: all (incl. integration)</td><td class="mono">pytest -v <span style="color:var(--muted);">— Postgres 필요</span></td></tr>
+      </table>
+    </section>
+
+    <!-- 09 참고 문서 -->
+    <section id="refs">
+      <h2><span class="idx">09</span>참고 문서</h2>
+      <div class="ref-grid">
+        <div class="ref-item"><span class="ref-name">00-requirements.md</span><span class="ref-desc">요구사항 정의서 (FR/NFR, TBD 항목)</span></div>
+        <div class="ref-item"><span class="ref-name">01-architecture.md</span><span class="ref-desc">아키텍처 설계, Feature Registry 패턴</span></div>
+        <div class="ref-item"><span class="ref-name">02-roadmap.md</span><span class="ref-desc">Phase 단위 로드맵 및 완료 기준</span></div>
+        <div class="ref-item"><span class="ref-name">CLAUDE.md</span><span class="ref-desc">세션 단위 실행 목록, 하지 말아야 할 것</span></div>
+        <div class="ref-item"><span class="ref-name">asml-rag-overview.html</span><span class="ref-desc">구현 전 아키텍처 논의 자료 (이 문서의 전신)</span></div>
+      </div>
+    </section>
+
+    <footer>ASML 설비 로그 RAG 시스템 · 구현 가이드 · Phase 4 기준</footer>
+  </main>
+</div>
+</body>
+</html>
