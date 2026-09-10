@@ -114,6 +114,17 @@
   단위테스트는 evaluator 경계값(`tests/test_evaluators_*.py`), 조건부 RAG 3케이스
   (`tests/test_features.py`), 라우터 배선(`tests/test_routes_*.py`)까지 전부
   DB/Ollama 없이 통과한다(`pytest tests/`).
+- **Phase 종료 시 `code-reviewer` 점검 결과(상시 항목)**: 아키텍처 원칙 6개(판정/설명
+  분리, 코어 무분기, 공용 함수 재사용, 조건부 RAG 게이트, 메타데이터 필터, 감사 저장)
+  위반 없음. 다만 두 건을 후속 수정했다 —
+  (1) `measured_at`이 JSON 문자열 그대로 asyncpg `timestamptz`로 전달돼 실 API/inline
+  첫 호출에서 `DataError` + 감사 레코드 유실이 나는 버그(`_coerce_measured_at()` 추가),
+  (2) chunker가 `feature_type`을 항상 `log_general`로 적재해 신규 3개 기능의 검색이
+  구조적으로 항상 0건이던 문제(Session 19.1 — `FEATURE_REGISTRY.log_keywords` +
+  `classify_feature_type()` + 근거 0건 시 LLM 호출 skip 가드).
+  미해결 후속: `_FEATURE_LABELS`/`_FEATURE_ENDPOINTS`/`"generic"` 특수분기 통합(4번째
+  feature 착수 전), `run_spec_check("id_dump")`의 `kind` 미검증, `_RETRYABLE`의 4xx
+  재시도, `pyproject.toml`의 `testpaths` 누락.
 
 ### Phase 7 — MCP 탐색 인터페이스 (선택, Session 20)
 

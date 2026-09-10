@@ -39,24 +39,77 @@ ID_DUMP_DOMAIN_NOTES = (
 )
 
 
+# 적재 시 log_chunks.feature_type을 붙이기 위한 분류 키워드. 검색 단계는 항상
+# feature_type으로 필터링하므로(rag/retriever.py), 여기에 키워드가 없는 기능은 적재된
+# 청크가 0건이 되어 해당 엔드포인트의 RAG 근거가 영구히 비게 된다.
+# [TBD] 부서 확인 필요 — 아래 어휘는 ftpmodule의 item 계약 문서
+# (fleet/processing/parse/{focal,overlay,dump}/interface.md)에 실제로 등장하는 용어에서
+# 뽑은 것이며, 실제 logs_raw 메시지 어휘가 확정되면 이 목록만 교체하면 된다.
+FOCAL_CURVE_LOG_KEYWORDS = (
+    "focal",
+    "focus",
+    "field_curve",
+    "focus_offset",
+    "dof",
+    "depth of focus",
+    "초점",
+)
+FINAL_XY_LOG_KEYWORDS = (
+    "overlay",
+    "final xy",
+    "final_xy",
+    "c2c",
+    "chuck",
+    "layer_shift",
+    "alignment",
+    "정렬",
+)
+ID_DUMP_LOG_KEYWORDS = (
+    "dump",
+    "tdf",
+    "scan_raw",
+    "scan_spec",
+    "detector",
+    "덤프",
+)
+
+
 @dataclass(frozen=True)
 class FeatureConfig:
     kind: str  # "spec_check" | "root_cause"
     evaluator: SpecEvaluator | None
     prompt_context: str | None
+    log_keywords: tuple[str, ...] = ()
 
 
 FEATURE_REGISTRY: dict[str, FeatureConfig] = {
     "focal_curve": FeatureConfig(
-        kind="spec_check", evaluator=FocalCurveEvaluator(), prompt_context=FOCAL_CURVE_DOMAIN_NOTES
+        kind="spec_check",
+        evaluator=FocalCurveEvaluator(),
+        prompt_context=FOCAL_CURVE_DOMAIN_NOTES,
+        log_keywords=FOCAL_CURVE_LOG_KEYWORDS,
     ),
     "final_xy": FeatureConfig(
-        kind="spec_check", evaluator=FinalXYEvaluator(), prompt_context=FINAL_XY_DOMAIN_NOTES
+        kind="spec_check",
+        evaluator=FinalXYEvaluator(),
+        prompt_context=FINAL_XY_DOMAIN_NOTES,
+        log_keywords=FINAL_XY_LOG_KEYWORDS,
     ),
     "id_dump": FeatureConfig(
-        kind="root_cause", evaluator=None, prompt_context=ID_DUMP_DOMAIN_NOTES
+        kind="root_cause",
+        evaluator=None,
+        prompt_context=ID_DUMP_DOMAIN_NOTES,
+        log_keywords=ID_DUMP_LOG_KEYWORDS,
     ),
 }
+
+
+def build_log_keyword_map() -> dict[str, tuple[str, ...]]:
+    """적재 워커(workers/embedding_sync_poller.py)에 넘길 {feature_type: 키워드} 맵.
+    chunker는 순수 함수로 유지해야 하므로 레지스트리를 직접 임포트하지 않고 호출자가
+    이 맵을 주입한다 — 새 기능은 FEATURE_REGISTRY에 log_keywords만 추가하면 적재
+    분류까지 자동으로 따라온다(FR-5.1)."""
+    return {ft: cfg.log_keywords for ft, cfg in FEATURE_REGISTRY.items() if cfg.log_keywords}
 
 
 def _get_feature_config(feature_type: str) -> FeatureConfig:

@@ -140,6 +140,7 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 - [x] **Session 17**: `models/schemas.py`에 `SpecCheckRequest.inline_data`/`inline_spec`, `IdDumpRequest`/`IdDumpResponse` 추가, `rag/features.py::resolve_data_and_spec()` 구현. identifier 기반 조회는 `clients/asml_api_client.py::fetch_feature_data_and_spec()`로 구현했으나 실제 ftpmodule 2-호출 계약(item 실행 + spec 페어링, equipment_id→서버 id 매핑)은 여전히 TBD — Phase 4와 동일하게 합리적으로 추정한 REST 엔드포인트로 파싱만 격리해둠
 - [x] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현(+ `tests/test_id_dump.py`). `judgements` 시드 데이터 채우기는 부서 실제 원인 분석 이력 확보 후 별도 작업으로 남음(Phase 5의 골든셋과 동일 사정)
 - [x] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, `rag/features.py`의 공용 `run_spec_check()`/`resolve_data_and_spec()`를 통해 로직 재사용 확인(`main.py`에 라우터 등록 완료). 기존 `api/routes_spec_check.py`도 동일 공용 함수로 리팩터링해 FR-5.1(본체 무수정) 요건을 실제로 만족시킴
+- [x] **Session 19.1 (Phase 6 후속, code-reviewer 지적)**: `log_chunks.feature_type` 적재 분류 배선 — 그동안 chunker가 모든 청크에 기본값 `log_general`만 붙여 신규 3개 기능의 검색이 **구조적으로 항상 0건**이었다. `FEATURE_REGISTRY`에 `log_keywords` 필드 + `build_log_keyword_map()`을 추가하고(새 기능은 여전히 레지스트리 항목만 추가), `workers/chunker.py::classify_feature_type()`(순수 함수, 키워드는 호출자 주입)로 청크별 분류, `embedding_sync_poller.py`에서 주입. 아울러 `rag/core.py`에 근거 0건 시 LLM 호출을 건너뛰고 `conclusion=None`으로 감사 레코드만 남기는 가드를 추가. 분류 키워드 어휘는 ftpmodule item 계약 문서에서 뽑은 추정값으로 여전히 TBD
 - [ ] **Session 20 (선택, UC1~7 안정화 이후)**: 사내 Gemma4-260430 API의 tool-calling 지원 여부 확인 → 지원 시 `mcp_server/tools.py` 구현(기존 결정론적 함수 wrapping) → `/chat` 탐색 엔드포인트 추가
 
 ## 하지 말아야 할 것

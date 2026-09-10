@@ -15,6 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from clients.embedding_client import EmbeddingClient, get_embedding_client
 from config import Settings, get_settings
 from db.repo import create_pool
+from rag.features import build_log_keyword_map
 from workers.chunker import LogChunk, RawLogRow, chunk_logs
 
 logger = logging.getLogger(__name__)
@@ -75,11 +76,15 @@ async def run_embedding_sync_cycle(
         for r in records
     ]
 
+    # feature_type 분류 키워드는 FEATURE_REGISTRY가 소유한다 — chunker는 순수 함수로
+    # 유지해야 하므로 여기서 읽어 주입한다. 이 주입이 빠지면 모든 청크가 log_general로
+    # 적재되어 focal_curve/final_xy/id_dump 엔드포인트의 검색이 항상 0건이 된다.
     chunks = chunk_logs(
         raw_rows,
         session_gap_sec=session_gap_sec,
         error_window_before=error_window_before,
         error_window_after=error_window_after,
+        feature_keywords=build_log_keyword_map(),
     )
 
     # embed() 호출은 DB 트랜잭션 밖에서 실행된다 — 느린 네트워크 호출 동안 커넥션을 점유하지 않기 위함.

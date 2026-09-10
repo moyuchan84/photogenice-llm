@@ -255,3 +255,38 @@ async def test_measured_at_datetime_passes_through(monkeypatch):
 
     _, save_kwargs = mock_save.call_args
     assert save_kwargs["measured_at"] is already
+
+
+# --- 적재 분류 키워드 배선 (Phase 6 후속) --------------------------------------
+
+
+def test_every_registered_feature_has_log_keywords():
+    """log_keywords가 비면 그 기능의 청크가 적재되지 않아 검색이 영구히 0건이 된다 —
+    새 기능을 FEATURE_REGISTRY에 추가할 때 가장 놓치기 쉬운 지점이라 테스트로 고정한다."""
+    missing = [ft for ft, cfg in features.FEATURE_REGISTRY.items() if not cfg.log_keywords]
+    assert missing == []
+
+
+def test_build_log_keyword_map_covers_registry():
+    keyword_map = features.build_log_keyword_map()
+    assert set(keyword_map) == set(features.FEATURE_REGISTRY)
+    for feature_type, keywords in keyword_map.items():
+        assert keywords == features.FEATURE_REGISTRY[feature_type].log_keywords
+
+
+def test_registry_keywords_actually_classify_their_own_feature():
+    """레지스트리 키워드가 chunker 분류를 실제로 통과하는지 — 키워드 간 충돌로 다른
+    기능이 선택되면 여기서 잡힌다."""
+    from datetime import UTC, datetime
+
+    from workers.chunker import RawLogRow, classify_feature_type
+
+    keyword_map = features.build_log_keyword_map()
+    for feature_type, keywords in keyword_map.items():
+        row = RawLogRow(
+            log_id=1,
+            equipment_id="EQ-01",
+            event_time=datetime(2026, 9, 8, tzinfo=UTC),
+            message=keywords[0],
+        )
+        assert classify_feature_type([row], keyword_map) == feature_type
