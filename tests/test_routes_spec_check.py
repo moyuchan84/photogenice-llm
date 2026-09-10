@@ -1,6 +1,7 @@
-"""api/routes_spec_check.py 단위 테스트 — evaluate_spec()는 실제로 실행하되(순수 함수),
-save_spec_evaluation()/run_rag_judgement()는 스텁으로 대체해 라우팅/조건부 RAG 호출
-로직(FR-2.3)만 검증한다.
+"""api/routes_spec_check.py 단위 테스트 — 판정/저장/조건부 RAG 로직 자체는
+tests/test_features.py로 이동했다. 여기서는 라우터가 resolve_data_and_spec()/
+run_spec_check()를 올바른 인자(feature_type="generic")로 호출하고 응답을 올바르게
+마샬링하는지만 검증한다.
 """
 
 from unittest.mock import AsyncMock
@@ -17,111 +18,104 @@ from api.deps import (
     get_settings_dep,
 )
 from config import Settings
-from rag.core import RagJudgementResult
+from rag.features import SpecCheckOutcome
 
 _TEST_SETTINGS = Settings(_env_file=None, database_url="postgresql://x/x")
 
 
-class _FakeAsmlClient:
-    def __init__(self, data: dict, spec: dict):
-        self._data = data
-        self._spec = spec
-
-    async def fetch_data_and_spec(self, *, equipment_id: str, parameter: str) -> tuple[dict, dict]:
-        return self._data, self._spec
-
-
-def _make_app(asml_client) -> FastAPI:
+def _make_app() -> FastAPI:
     app = FastAPI()
     app.include_router(routes_spec_check.router)
     app.dependency_overrides[get_db_pool] = lambda: None
     app.dependency_overrides[get_embedding_client_dep] = lambda: None
     app.dependency_overrides[get_llm_client_dep] = lambda: None
-    app.dependency_overrides[get_asml_api_client_dep] = lambda: asml_client
+    app.dependency_overrides[get_asml_api_client_dep] = lambda: None
     app.dependency_overrides[get_settings_dep] = lambda: _TEST_SETTINGS
     return app
 
 
-def _post(asml_client) -> "TestClient.Response":
-    client = TestClient(_make_app(asml_client))
-    return client.post("/query/spec-check", json={"equipment_id": "EQ-01", "parameter": "focus"})
+def test_route_wires_resolve_and_run_spec_check_with_generic_feature_type(monkeypatch):
+    mock_resolve = AsyncMock(return_value=({"value": 15.0}, {"lsl": 10.0, "usl": 20.0}))
+    monkeypatch.setattr(routes_spec_check, "resolve_data_and_spec", mock_resolve)
+    mock_run = AsyncMock(
+        return_value=SpecCheckOutcome(
+            eval_id=1,
+            determination="IN_SPEC",
+            margin_pct=100.0,
+            judgement_id=None,
+            conclusion=None,
+            confidence=None,
+            recommended_action=None,
+            evidence_chunk_ids=None,
+        )
+    )
+    monkeypatch.setattr(routes_spec_check, "run_spec_check", mock_run)
 
-
-def test_in_spec_well_within_range_skips_rag(monkeypatch):
-    monkeypatch.setattr(routes_spec_check, "save_spec_evaluation", AsyncMock(return_value=1))
-    mock_rag = AsyncMock()
-    monkeypatch.setattr(routes_spec_check, "run_rag_judgement", mock_rag)
-
-    resp = _post(_FakeAsmlClient({"value": 15.0}, {"lsl": 10.0, "usl": 20.0}))
+    client = TestClient(_make_app())
+    resp = client.post("/query/spec-check", json={"equipment_id": "EQ-01", "parameter": "focus"})
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["determination"] == "IN_SPEC"
     assert body["margin_pct"] == 100.0
     assert body["judgement_id"] is None
-    mock_rag.assert_not_called()
 
+    mock_resolve.assert_called_once()
+    _, resolve_kwargs = mock_resolve.call_args
+    assert resolve_kwargs["feature_type"] == "generic"
 
-def test_out_of_spec_triggers_rag(monkeypatch):
-    mock_save = AsyncMock(return_value=42)
-    monkeypatch.setattr(routes_spec_check, "save_spec_evaluation", mock_save)
-    fake_result = RagJudgementResult(
-        judgement_id=7,
-        conclusion="원인 추정",
-        confidence=0.8,
-        recommended_action="조치",
-        evidence_chunk_ids=[1, 2],
-        retrieved_chunks=[],
-    )
-    mock_rag = AsyncMock(return_value=fake_result)
-    monkeypatch.setattr(routes_spec_check, "run_rag_judgement", mock_rag)
-
-    resp = _post(_FakeAsmlClient({"value": 25.0}, {"lsl": 10.0, "usl": 20.0}))
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["determination"] == "OUT_OF_SPEC"
-    assert body["judgement_id"] == 7
-    assert body["conclusion"] == "원인 추정"
-    assert body["evidence_chunk_ids"] == [1, 2]
-
-    mock_rag.assert_called_once()
-    _, kwargs = mock_rag.call_args
-    assert kwargs["use_case"] == "spec_check"
-    assert kwargs["eval_id"] == 42
-    assert kwargs["equipment_id"] == "EQ-01"
-
-    mock_save.assert_called_once()
-    _, save_kwargs = mock_save.call_args
-    assert save_kwargs["determination"] == "OUT_OF_SPEC"
-
-
-def test_in_spec_near_margin_threshold_triggers_rag(monkeypatch):
-    monkeypatch.setattr(routes_spec_check, "save_spec_evaluation", AsyncMock(return_value=1))
-    mock_rag = AsyncMock(
-        return_value=RagJudgementResult(
-            judgement_id=1,
-            conclusion=None,
-            confidence=None,
-            recommended_action=None,
-            evidence_chunk_ids=[],
-            retrieved_chunks=[],
-        )
-    )
-    monkeypatch.setattr(routes_spec_check, "run_rag_judgement", mock_rag)
-
-    # value=10.75, lsl=10, usl=20 -> margin_pct == 15.0 (Phase 5 golden셋으로 확정한
-    # 기본 임계치, scripts/golden_set/last_run_report.json 참고), IN_SPEC.
-    resp = _post(_FakeAsmlClient({"value": 10.75}, {"lsl": 10.0, "usl": 20.0}))
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["determination"] == "IN_SPEC"
-    assert body["margin_pct"] == 15.0
-    mock_rag.assert_called_once()
+    mock_run.assert_called_once()
+    _, run_kwargs = mock_run.call_args
+    assert run_kwargs["feature_type"] == "generic"
+    assert run_kwargs["equipment_id"] == "EQ-01"
+    assert run_kwargs["parameter"] == "focus"
+    assert run_kwargs["data"] == {"value": 15.0}
+    assert run_kwargs["spec"] == {"lsl": 10.0, "usl": 20.0}
 
 
 def test_rejects_empty_equipment_id():
-    client = TestClient(_make_app(_FakeAsmlClient({"value": 1}, {"lsl": 0, "usl": 2})))
+    client = TestClient(_make_app())
     resp = client.post("/query/spec-check", json={"equipment_id": "", "parameter": "focus"})
     assert resp.status_code == 422
+
+
+def test_inline_data_succeeds_when_asml_api_not_configured(monkeypatch):
+    """FR-2.5 회귀 테스트(code review에서 발견) — get_asml_api_client_dep을
+    오버라이드하지 않고 app.state.asml_api_client=None(ASML API 미설정 환경)을 그대로
+    둔 채, inline_data/inline_spec 경로가 503 없이 성공하는지 실제 의존성 체인으로
+    확인한다."""
+    mock_run = AsyncMock(
+        return_value=SpecCheckOutcome(
+            eval_id=1,
+            determination="IN_SPEC",
+            margin_pct=100.0,
+            judgement_id=None,
+            conclusion=None,
+            confidence=None,
+            recommended_action=None,
+            evidence_chunk_ids=None,
+        )
+    )
+    monkeypatch.setattr(routes_spec_check, "run_spec_check", mock_run)
+
+    app = FastAPI()
+    app.include_router(routes_spec_check.router)
+    app.dependency_overrides[get_db_pool] = lambda: None
+    app.dependency_overrides[get_embedding_client_dep] = lambda: None
+    app.dependency_overrides[get_llm_client_dep] = lambda: None
+    app.dependency_overrides[get_settings_dep] = lambda: _TEST_SETTINGS
+    app.state.asml_api_client = None  # get_asml_api_client_dep은 오버라이드하지 않음
+
+    client = TestClient(app)
+    resp = client.post(
+        "/query/spec-check",
+        json={
+            "equipment_id": "EQ-01",
+            "parameter": "focus",
+            "inline_data": {"value": 15.0},
+            "inline_spec": {"lsl": 10.0, "usl": 20.0},
+        },
+    )
+
+    assert resp.status_code == 200
+    mock_run.assert_called_once()

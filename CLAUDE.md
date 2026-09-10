@@ -133,13 +133,13 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 - [x] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
 - [x] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
 - [x] **Session 12**: 평가 스크립트(`scripts/evaluate_golden_set.py`, `scripts/evaluate_chunk_window.py`) — 합성 골든셋(부서 실이력 TBD)으로 원인 가설 품질 측정, `margin_pct` 임계치 10%→15%/`top_k`=5/프롬프트 튜닝 확정. 상세: `00-requirements.md` §11.1, `02-roadmap.md` Phase 5
-- [ ] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션
-- [ ] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 골격 작성 (focal_curve/final_xy/id_dump 항목, prompt_context 초안). 착수 전 `ftpmodule`의 어느 item(`focal`/`overlay` 등)이 focal_curve/final_xy에 대응하는지 `ftpmodule/fleet/processing/parse/<item>/interface.md`로 확인
-- [ ] **Session 15**: `rag/evaluators/focal_curve.py` — curve 배열 range/sigma/DOF 계산 로직 + 유닛테스트
-- [ ] **Session 16**: `rag/evaluators/final_xy.py` — X/Y mean±3σ 계산 로직 + 유닛테스트
-- [ ] **Session 17**: `models/schemas.py`에 `SpecCheckRequest`(inline_data/inline_spec vs identifier 기반 조회) 추가, `resolve_data_and_spec()` 구현. identifier 기반 조회 경로는 `ftpmodule/README.api.md`의 item 실행(`/servers/{id}/items/{item}`) + `/spec/map` 두 호출 조합이 필요할 수 있음(위 "기존 백엔드 참고 자료" 참고)
-- [ ] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현, `judgements`에 시드 데이터(과거 원인 분석 이력) 채우기
-- [ ] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, Feature Registry 통해 공용 로직 호출 확인
+- [x] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션 — 실제로는 최초 커밋(Session 1)부터 이미 포함되어 있었음이 Phase 6 착수 시 확인됨(별도 작업 불필요)
+- [x] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 작성(focal_curve/final_xy/id_dump 항목 + prompt_context) + `resolve_data_and_spec()` + 공용 `run_spec_check()`(순수성 훅 때문에 spec_evaluator.py가 아닌 이 파일이 소유). ftpmodule 매핑 확인 결과: focal_curve↔`focal`/`focalspec`, final_xy↔`overlay`/`overlayspec`, id_dump↔`dump`
+- [x] **Session 15**: `rag/evaluators/focal_curve.py` — curve 배열 range/sigma/DOF 계산 로직 + 유닛테스트(`tests/test_evaluators_focal_curve.py`). 정확한 계산식은 여전히 부서 확인 대기 중인 TBD — CLAUDE.md 초안 정의(range/sigma/DOF)를 그대로 구현
+- [x] **Session 16**: `rag/evaluators/final_xy.py` — X/Y mean±3σ 계산 로직 + 유닛테스트(`tests/test_evaluators_final_xy.py`). ftpmodule overlay의 10-파라미터 모델 적합 residual 공식은 더 정교한 대안으로 남겨둠(부서 확인 후 채택 여부 결정)
+- [x] **Session 17**: `models/schemas.py`에 `SpecCheckRequest.inline_data`/`inline_spec`, `IdDumpRequest`/`IdDumpResponse` 추가, `rag/features.py::resolve_data_and_spec()` 구현. identifier 기반 조회는 `clients/asml_api_client.py::fetch_feature_data_and_spec()`로 구현했으나 실제 ftpmodule 2-호출 계약(item 실행 + spec 페어링, equipment_id→서버 id 매핑)은 여전히 TBD — Phase 4와 동일하게 합리적으로 추정한 REST 엔드포인트로 파싱만 격리해둠
+- [x] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현(+ `tests/test_id_dump.py`). `judgements` 시드 데이터 채우기는 부서 실제 원인 분석 이력 확보 후 별도 작업으로 남음(Phase 5의 골든셋과 동일 사정)
+- [x] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, `rag/features.py`의 공용 `run_spec_check()`/`resolve_data_and_spec()`를 통해 로직 재사용 확인(`main.py`에 라우터 등록 완료). 기존 `api/routes_spec_check.py`도 동일 공용 함수로 리팩터링해 FR-5.1(본체 무수정) 요건을 실제로 만족시킴
 - [ ] **Session 20 (선택, UC1~7 안정화 이후)**: 사내 Gemma4-260430 API의 tool-calling 지원 여부 확인 → 지원 시 `mcp_server/tools.py` 구현(기존 결정론적 함수 wrapping) → `/chat` 탐색 엔드포인트 추가
 
 ## 하지 말아야 할 것

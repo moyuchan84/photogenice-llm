@@ -21,3 +21,10 @@ def test_parse_response_missing_data_key_raises():
 def test_parse_response_missing_spec_key_raises():
     with pytest.raises(ValueError):
         HttpAsmlApiClient._parse_response({"data": {"value": 1}})
+
+
+def test_feature_endpoints_registered_for_focal_curve_and_final_xy():
+    from clients.asml_api_client import _FEATURE_ENDPOINTS
+
+    assert _FEATURE_ENDPOINTS["focal_curve"] == "/focal-curve"
+    assert _FEATURE_ENDPOINTS["final_xy"] == "/final-xy"

@@ -21,6 +21,9 @@ class AsmlApiClient(Protocol):
     async def fetch_data_and_spec(
         self, *, equipment_id: str, parameter: str
     ) -> tuple[dict, dict]: ...
+    async def fetch_feature_data_and_spec(
+        self, *, feature_type: str, equipment_id: str, parameter: str
+    ) -> tuple[dict, dict]: ...
     async def aclose(self) -> None: ...
 
 
@@ -33,11 +36,22 @@ def _make_retrying(max_retries: int) -> AsyncRetrying:
     )
 
 
+_FEATURE_ENDPOINTS = {"focal_curve": "/focal-curve", "final_xy": "/final-xy"}
+
+
 class HttpAsmlApiClient:
     """부서 ASML API 어댑터.
 
     TBD: 실제 엔드포인트/인증/응답 필드명 미확정. `data`+`spec`이 결합된 JSON을
     반환하는 단일 GET 엔드포인트로 추정 구현했다.
+
+    Focal Curve/Final XY용 fetch_feature_data_and_spec()도 같은 추정 수준으로
+    구현했다 — 실제로는 ftpmodule의 item 실행(`/servers/{id}/items/focal`|`overlay`)
+    + spec 페어링(`focalspec`|`overlayspec`) 2-호출 조합이 될 가능성이 높지만,
+    equipment_id→서버 id 매핑과 태그 위치(occurrence/index) 매핑이 모두 미확정이라
+    (ftpmodule/fleet/processing/parse/{focal,overlay,focalspec,overlayspec}/interface.md
+    참고) 지금은 이 클라이언트가 반환하는 정규화된 data/spec dict 형태에만 의존하도록
+    파싱을 격리해뒀다. 확정 후 이 두 메서드만 조정하면 된다.
     """
 
     def __init__(self, base_url: str, api_key: str, timeout: float = 30.0, max_retries: int = 3):
@@ -63,6 +77,23 @@ class HttpAsmlApiClient:
 
     async def fetch_data_and_spec(self, *, equipment_id: str, parameter: str) -> tuple[dict, dict]:
         return await self._retrying(self._get_measurement, equipment_id, parameter)
+
+    async def _get_feature_measurement(
+        self, feature_type: str, equipment_id: str, parameter: str
+    ) -> tuple[dict, dict]:
+        path = _FEATURE_ENDPOINTS[feature_type]
+        resp = await self._client.get(
+            path, params={"equipment_id": equipment_id, "parameter": parameter}
+        )
+        resp.raise_for_status()
+        return self._parse_response(resp.json())
+
+    async def fetch_feature_data_and_spec(
+        self, *, feature_type: str, equipment_id: str, parameter: str
+    ) -> tuple[dict, dict]:
+        return await self._retrying(
+            self._get_feature_measurement, feature_type, equipment_id, parameter
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()

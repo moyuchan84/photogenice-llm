@@ -22,8 +22,8 @@ _INSERT_JUDGEMENT_SQL = """
 _INSERT_SPEC_EVALUATION_SQL = """
     INSERT INTO spec_evaluations
         (equipment_id, parameter, measured_value, unit, lsl, usl, target, measured_at,
-         determination, margin_pct, raw_data_json, raw_spec_json, feature_type)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         determination, margin_pct, raw_data_json, raw_spec_json, feature_type, metrics_json)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING eval_id
 """
 
@@ -83,6 +83,7 @@ async def save_spec_evaluation(
     raw_data: dict,
     raw_spec: dict,
     feature_type: str = "generic",
+    metrics: dict | None = None,
 ) -> int:
     async with pool.acquire() as conn:
         return await conn.fetchval(
@@ -100,4 +101,5 @@ async def save_spec_evaluation(
             json.dumps(raw_data),
             json.dumps(raw_spec),
             feature_type,
+            json.dumps(metrics) if metrics is not None else None,
         )
