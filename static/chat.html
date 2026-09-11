@@ -1,0 +1,604 @@
+<!-- ASML RAG 채팅 — GET /verify/chat 로 서빙된다 (api/routes_verify.py).
+     POST /chat(api/routes_chat.py, FR-7)의 NDJSON 스트림을 받아 한 턴을
+     "계획 → 도구 실행 결과 카드 → 답변" 순서로 쌓는다.
+     - LLM은 도구 호출 계획만 만든다. 서버가 검증한 호출만 실행된다.
+     - 판정/margin/수치는 도구 결과를 그대로 표시할 뿐 이 페이지에서 계산하지 않는다.
+     - 서버/LLM 문자열은 전부 textContent로만 넣는다(innerHTML 미사용). -->
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASML RAG Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Martian+Mono:wdth,wght@75..112.5,300..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#0b0c0a; --panel:#121410; --panel-2:#181b15; --panel-3:#1e2219;
+  --rule:#272b20; --rule-hot:#3c4230;
+  --ink:#dcdfd2; --dim:#868d78; --faint:#5a6150;
+  --amber:#f0b323; --amber-deep:#a87a10; --amber-glow:rgba(240,179,35,.14);
+  --pass:#82c96f; --fail:#ff5f4d; --info:#5cc8d6; --pend:#6b7263;
+  --mono:'Martian Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
+  --sans:'Archivo','Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(var(--rule) 1px,transparent 1px),linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:64px 64px;background-position:-1px -1px;display:flex;flex-direction:column}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 90% 60% at 50% -10%,var(--amber-glow),transparent 70%)}
+::selection{background:var(--amber);color:#0b0c0a}
+button,textarea{font:inherit;color:inherit}
+:focus-visible{outline:1px solid var(--amber);outline-offset:2px}
+
+.rail{position:sticky;top:0;z-index:40;background:rgba(11,12,10,.93);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule-hot)}
+.rail::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:22%;background:linear-gradient(90deg,transparent,var(--amber),transparent);animation:scan 6s linear infinite}
+@keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(560%)}}
+.rail-in{max-width:1600px;margin:0 auto;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto}
+.brand h1{margin:0;font-size:15px;letter-spacing:.16em;text-transform:uppercase;font-variation-settings:'wdth' 110,'wght' 700}
+.brand span{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.08em}
+.brand span b{color:var(--amber-deep);font-weight:400}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-family:var(--mono);font-size:10px;letter-spacing:.06em;border:1px solid var(--rule-hot);background:var(--panel);padding:5px 9px;display:flex;gap:7px;align-items:center;white-space:nowrap}
+.pill i{width:6px;height:6px;background:var(--pend);display:block;flex:none}
+.pill.ok i{background:var(--pass);box-shadow:0 0 7px var(--pass)}
+.pill.bad i{background:var(--fail);box-shadow:0 0 7px var(--fail)}
+.pill.warn i{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.pill b{color:var(--dim);font-weight:400}
+.links{display:flex;gap:6px;flex-wrap:wrap}
+.btn{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;background:transparent;border:1px solid var(--rule-hot);padding:7px 12px;cursor:pointer;transition:.14s;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber);background:var(--amber-glow)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.primary{border-color:var(--amber-deep);color:var(--amber)}
+.btn.primary:hover:not(:disabled){background:var(--amber);color:#0b0c0a;border-color:var(--amber)}
+
+.shell{position:relative;z-index:1;flex:1;min-height:0;width:100%;max-width:1600px;margin:0 auto;padding:18px 24px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px}
+@media(max-width:1000px){.shell{grid-template-columns:1fr;padding:14px 16px}}
+.side{display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;padding-right:2px}
+@media(max-width:1000px){.side{order:2;overflow:visible}}
+.box{border:1px solid var(--rule-hot);background:var(--panel)}
+.box-hd{padding:9px 13px;border-bottom:1px solid var(--rule);display:flex;align-items:baseline;gap:8px}
+.box-hd h2{margin:0;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-variation-settings:'wdth' 105,'wght' 700;color:var(--amber)}
+.box-hd small{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-left:auto;text-align:right}
+.box-bd{padding:10px 13px}
+.examples{display:flex;flex-direction:column}
+.ex{text-align:left;border:0;border-bottom:1px solid var(--rule);background:transparent;padding:8px 13px;cursor:pointer;transition:background .12s;display:grid;grid-template-columns:auto 1fr;gap:1px 9px}
+.ex:last-child{border-bottom:0}
+.ex:hover{background:var(--panel-2)}
+.ex i{font-style:normal;font-family:var(--mono);font-size:9.5px;color:var(--amber-deep);grid-row:span 2;padding-top:2px;min-width:18px}
+.ex span{font-family:var(--mono);font-size:9px;color:var(--faint);letter-spacing:.06em}
+.ex b{font-size:12.5px;font-weight:500;line-height:1.4}
+.tools{display:flex;flex-direction:column}
+.tool{padding:7px 13px;border-bottom:1px solid var(--rule)}
+.tool:last-child{border-bottom:0}
+.tool code{font-family:var(--mono);font-size:10px;color:var(--ink);word-break:break-all}
+.tool p{margin:2px 0 0;font-size:11.5px;color:var(--dim);line-height:1.4}
+.tag{font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;border:1px solid var(--rule-hot);padding:0 4px;margin-left:5px;color:var(--faint);vertical-align:1px}
+.tag.w{color:var(--amber-deep);border-color:var(--amber-deep)} .tag.l{color:var(--info);border-color:rgba(92,200,214,.5)}
+.grp{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.1em;margin:9px 0 5px}
+.grp:first-child{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--mono);font-size:10.5px;border:1px solid var(--rule-hot);background:var(--panel-2);padding:3px 7px;cursor:pointer;transition:.12s}
+.chip:hover{border-color:var(--amber);color:var(--amber)}
+.note{font-size:11.5px;color:var(--faint);line-height:1.45;margin:0}
+.rules{margin:0;padding-left:16px;font-size:11.5px;color:var(--dim);line-height:1.5}
+
+.chat{display:flex;flex-direction:column;min-height:0;border:1px solid var(--rule-hot);background:rgba(18,20,16,.88)}
+@media(max-width:1000px){.chat{min-height:78vh}}
+.log{flex:1;min-height:0;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:18px}
+.turn{width:100%;max-width:1040px;opacity:0;animation:rise .35s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.turn.user{align-self:flex-end;max-width:760px}
+.u-msg{border:1px solid var(--amber-deep);background:rgba(240,179,35,.06);padding:10px 13px;white-space:pre-wrap;word-break:break-word}
+.bot{display:flex;flex-direction:column;gap:10px}
+.who{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;display:flex;gap:10px;align-items:center}
+.who b{color:var(--amber);font-weight:500}
+.who .time{margin-left:auto;font-variant-numeric:tabular-nums}
+
+.plan{border:1px dashed var(--rule-hot);padding:8px 11px;display:flex;flex-direction:column;gap:6px}
+.plan-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.plan-row .lbl{color:var(--faint);letter-spacing:.08em;font-size:9.5px;text-transform:uppercase}
+.call{border:1px solid var(--rule-hot);background:var(--panel-2);padding:2px 7px;color:var(--ink)}
+.call em{font-style:normal;color:var(--amber)}
+.planner{padding:2px 7px;border:1px solid}
+.planner.llm{color:var(--info);border-color:rgba(92,200,214,.5)} .planner.fallback,.planner.rule{color:var(--amber);border-color:var(--amber-deep)}
+.plan-notes{margin:0;padding-left:16px;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.spin{display:inline-block;width:7px;height:7px;background:var(--amber);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+.card{border:1px solid var(--rule-hot);background:var(--panel);position:relative}
+.card::before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;width:2px;background:var(--rule-hot)}
+.card.in::before{background:var(--pass)} .card.out::before{background:var(--fail)} .card.run::before{background:var(--amber);animation:pulse 1s ease-in-out infinite}
+.card.err::before{background:var(--fail)} .card.info::before{background:var(--info)}
+.c-hd{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.c-hd .ti{font-variation-settings:'wght' 650;font-size:13.5px}
+.c-hd .sub{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.c-hd .time{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
+.badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;padding:3px 8px;border:1px solid;white-space:nowrap}
+.badge.in{color:var(--pass);border-color:var(--pass);background:rgba(130,201,111,.08)}
+.badge.out{color:var(--fail);border-color:var(--fail);background:rgba(255,95,77,.08)}
+.badge.run{color:var(--amber);border-color:var(--amber-deep)}
+.badge.err{color:var(--fail);border-color:var(--fail)}
+.badge.info{color:var(--info);border-color:var(--info)}
+.c-bd{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.pending{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;gap:8px;align-items:center}
+
+.measure{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.measure > div{background:var(--panel-2);padding:9px 11px}
+.measure span{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.measure b{display:block;font-family:var(--mono);font-size:17px;font-variation-settings:'wght' 600;font-variant-numeric:tabular-nums;line-height:1.35;word-break:break-all}
+.measure b.out{color:var(--fail)} .measure b.in{color:var(--pass)} .measure b.near{color:var(--amber)}
+.measure small{display:block;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px}
+.gauge{position:relative;height:24px;margin-top:2px}
+.gauge .track{position:absolute;left:0;right:0;top:10px;height:4px;display:flex}
+.gauge .track i{display:block;height:100%}
+.z-out{background:rgba(255,95,77,.45)} .z-near{background:rgba(240,179,35,.45)} .z-ok{background:rgba(130,201,111,.35)}
+.gauge .mark{position:absolute;top:3px;width:2px;height:18px;background:var(--ink);box-shadow:0 0 6px var(--ink);transform:translateX(-1px)}
+.gauge .thr{position:absolute;top:7px;width:1px;height:10px;background:var(--amber)}
+.gauge-legend{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.gate{font-family:var(--mono);font-size:11px;padding:7px 10px;border:1px dashed var(--rule-hot);color:var(--dim)}
+.gate b{font-weight:500} .gate.run b{color:var(--amber)} .gate.skip b{color:var(--pass)} .gate.empty b{color:var(--info)}
+.llm{border:1px solid var(--rule);background:var(--panel-2)}
+.llm-hd{display:flex;align-items:center;gap:8px;padding:7px 11px;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase}
+.conf{margin-left:auto;display:flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0}
+.conf i{display:block;width:70px;height:4px;background:var(--rule-hot);position:relative}
+.conf i::after{content:'';position:absolute;inset:0 auto 0 0;width:var(--w,0%);background:var(--amber)}
+.llm-bd{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.llm-bd p{margin:0;font-size:14px;line-height:1.6}
+.llm-bd .act{font-size:13px;color:var(--dim)}
+.llm-bd .act b{color:var(--amber);font-weight:500;margin-right:6px;font-family:var(--mono);font-size:10px;letter-spacing:.08em}
+.src{font-family:var(--mono);font-size:10.5px;color:var(--dim);display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
+.src em{font-style:normal;color:var(--ink);word-break:break-all}
+details.fold{border:1px solid var(--rule)}
+details.fold > summary{cursor:pointer;list-style:none;padding:7px 11px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--dim);display:flex;gap:8px;align-items:center}
+details.fold > summary::-webkit-details-marker{display:none}
+details.fold > summary::before{content:'▸';color:var(--amber-deep)}
+details.fold[open] > summary::before{content:'▾'}
+details.fold > summary:hover{color:var(--amber)}
+.fold-bd{border-top:1px solid var(--rule);padding:9px 11px;display:flex;flex-direction:column;gap:8px}
+.chunk{border:1px solid var(--rule);background:var(--ground)}
+.chunk.cited{border-color:var(--amber-deep)}
+.chunk-hd{display:flex;flex-wrap:wrap;gap:6px 10px;padding:6px 9px;font-family:var(--mono);font-size:10px;color:var(--dim);border-bottom:1px solid var(--rule)}
+.chunk-hd b{color:var(--ink);font-weight:500} .chunk-hd .cite{color:var(--amber)}
+pre{margin:0;font-family:var(--mono);font-size:10.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;color:var(--dim);padding:8px 9px;max-height:300px;overflow:auto}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
+th,td{padding:6px 10px;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap;vertical-align:top}
+th{color:var(--faint);font-weight:400;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--panel-2)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.wrap{white-space:normal;min-width:240px;color:var(--dim);font-family:var(--sans);font-size:12px}
+tr:last-child td{border-bottom:0}
+.det{font-size:10px;padding:1px 5px;border:1px solid}
+.det.in{color:var(--pass);border-color:rgba(130,201,111,.5)} .det.out{color:var(--fail);border-color:rgba(255,95,77,.5)}
+.c-ft{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 14px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:10px;color:var(--faint)}
+.c-ft em{font-style:normal;color:var(--dim)}
+.errmsg{font-family:var(--mono);font-size:11.5px;color:var(--fail);white-space:pre-wrap;word-break:break-word;margin:0}
+.answer{border-left:2px solid var(--amber);background:var(--panel);padding:10px 14px}
+.answer .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--amber);text-transform:uppercase;margin-bottom:5px}
+.answer p{margin:0;white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.65}
+
+.composer{border-top:1px solid var(--rule-hot);background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:7px}
+.comp-row{display:flex;gap:8px;align-items:stretch}
+textarea{flex:1;min-height:48px;max-height:180px;resize:vertical;background:var(--ground);border:1px solid var(--rule-hot);padding:10px 11px;font-size:14px;line-height:1.5}
+textarea::placeholder{color:var(--faint)}
+.hint{font-family:var(--mono);font-size:10px;color:var(--faint)}
+@media(max-width:640px){.comp-row{flex-direction:column}}
+.welcome{border:1px dashed var(--rule-hot);padding:14px 16px;color:var(--dim);font-size:13px;max-width:900px}
+.welcome h3{margin:0 0 6px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+.welcome ul{margin:6px 0 0;padding-left:18px}
+</style>
+</head>
+<body>
+
+<header class="rail">
+  <div class="rail-in">
+    <div class="brand">
+      <h1>ASML RAG · Chat</h1>
+      <span>POST /chat <b>→</b> LLM 계획(JSON) <b>→</b> 서버 검증 <b>→</b> 결정론 도구 <b>→</b> 조건부 RAG</span>
+    </div>
+    <div class="pills">
+      <span class="pill" id="pill-db"><i></i><b>DB</b> …</span>
+      <span class="pill" id="pill-emb"><i></i><b>EMB</b> …</span>
+      <span class="pill" id="pill-llm"><i></i><b>LLM</b> …</span>
+      <span class="pill" id="pill-asml"><i></i><b>FTPMODULE</b> …</span>
+      <span class="pill" id="pill-gate"><i></i><b>GATE</b> …</span>
+    </div>
+    <nav class="links">
+      <a class="btn" href="/verify">검증 콘솔</a>
+      <a class="btn" href="/docs" target="_blank" rel="noopener">Swagger</a>
+      <button class="btn" id="clear" type="button">새 대화</button>
+    </nav>
+  </div>
+</header>
+
+<main class="shell">
+  <aside class="side">
+    <section class="box">
+      <div class="box-hd"><h2>시나리오</h2><small>00-requirements.md 순서 · 클릭하면 전송</small></div>
+      <div class="examples" id="examples"></div>
+    </section>
+    <section class="box">
+      <div class="box-hd"><h2>등록된 이름</h2><small>ftpmodule · 클릭해서 입력</small></div>
+      <div class="box-bd" id="names"><p class="note">불러오는 중…</p></div>
+    </section>
+    <section class="box">
+      <div class="box-hd"><h2>도구</h2><small>mcp_server/tools.py</small></div>
+      <div class="tools" id="tools"></div>
+    </section>
+    <section class="box">
+      <div class="box-hd"><h2>원칙</h2><small>FR-7 · CLAUDE.md</small></div>
+      <div class="box-bd">
+        <ul class="rules">
+          <li>LLM은 <b>어떤 도구를 부를지</b>만 JSON으로 고릅니다. 이름·인자는 서버가 검증합니다.</li>
+          <li>판정·margin·수치는 결정론적 도구 결과만 표시합니다.</li>
+          <li>원인 설명은 OUT_OF_SPEC이거나 margin이 임계 이하일 때만 RAG로 생성됩니다.</li>
+          <li>판정·설명 도구는 /query/* 와 같은 함수를 타므로 감사 레코드가 남습니다.</li>
+        </ul>
+      </div>
+    </section>
+  </aside>
+
+  <section class="chat" aria-label="대화">
+    <div class="log" id="log" aria-live="polite">
+      <div class="welcome" id="welcome">
+        <h3>무엇을 확인할까요?</h3>
+        자연어로 물어보세요. 왼쪽 <b>시나리오</b>를 위에서부터 누르면 요구사항 문서의 흐름대로 진행됩니다.
+        <ul>
+          <li>MOCK-EUV-01 SCALE_CH1 focal 판정해줘 → <i>그럼 ROTATION_CH1은?</i></li>
+          <li>MOCK-EUV-01 ID dump 원인 분석해줘</li>
+          <li>chuck 누설로 overlay 문제 생긴 적 있어? 조치는?</li>
+        </ul>
+        <p class="note" style="margin-top:8px">로컬 llama3 기준: 계획 수립 약 15~30초, 원인 설명(RAG)이 붙으면 건당 1~2분 더 걸립니다.</p>
+      </div>
+    </div>
+    <form class="composer" id="composer">
+      <div class="comp-row">
+        <textarea id="input" rows="2" placeholder="예: MOCK-EUV-01 SCALE_CH1 focal 판정해줘" aria-label="메시지"></textarea>
+        <button class="btn primary" id="send" type="submit">전송 ↵</button>
+      </div>
+      <div class="hint" id="hint">Enter 전송 · Shift+Enter 줄바꿈 · 대화 문맥(직전 설비/기능)은 자동으로 이어집니다</div>
+    </form>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const SCENARIO = [
+  {tag: "안내", text: "뭘 할 수 있어?"},
+  {tag: "조회", text: "등록된 설비 목록 보여줘"},
+  {tag: "조회", text: "MOCK-EUV-01 focal 최신 값들 보여줘"},
+  {tag: "UC2·Focal", text: "MOCK-EUV-01 SCALE_CH1 focal 판정해줘", note: "OUT_OF_SPEC → RAG"},
+  {tag: "후속", text: "그럼 ROTATION_CH1은?", note: "문맥 이어받기 · 근접 → RAG"},
+  {tag: "UC2·Focal", text: "TRANSLATION_CH1이랑 SCALE_CH2도 판정해줘", note: "정상 → LLM 생략"},
+  {tag: "Final XY", text: "MOCK-EUV-01 overlay RESIDUAL_X_AFTER 확인해줘", note: "OUT_OF_SPEC → RAG"},
+  {tag: "ID Dump", text: "MOCK-EUV-01 ID dump 원인 분석해줘", note: "ftpmodule dump → RAG"},
+  {tag: "UC1", text: "MOCK-EUV-01에서 chuck 누설로 overlay 문제 생긴 적 있어? 조치는?"},
+  {tag: "검색", text: "detector 관련 과거 로그만 찾아줘", note: "LLM 없음"},
+  {tag: "감사", text: "최근 OUT_OF_SPEC 판정 이력 보여줘"},
+  {tag: "되묻기", text: "MOCK-EUV-02 SCALE_CH1 판정해줘", note: "양쪽 domain 항목 · 기능 문맥 없으면 확인 질문"},
+  {tag: "대조군", text: "MOCK-EUV-02 focal SCALE_CH1 판정해줘", note: "정상 → LLM 생략"},
+];
+
+const state = {history: [], busy: false, threshold: null, catalog: null};
+const $ = (id) => document.getElementById(id);
+
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "style") node.setAttribute("style", v);
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+const fmt = (n, d = 2) => (n == null || Number.isNaN(Number(n)) ? "-" : Number(Number(n).toFixed(d)).toString());
+const KST = new Intl.DateTimeFormat("sv-SE", {timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"});
+const kst = (iso) => { const d = iso ? new Date(iso) : null; return d && !Number.isNaN(d.getTime()) ? KST.format(d) : "-"; };
+const scrollEnd = () => { const log = $("log"); log.scrollTop = log.scrollHeight; };
+
+/* ---------- 초기 로드 ---------- */
+function setPill(id, cls, label, text) {
+  $(id).className = "pill " + cls;
+  $(id).replaceChildren(el("i"), el("b", null, label), " " + text);
+}
+
+async function loadStatus() {
+  try {
+    const s = await (await fetch("/verify/status")).json();
+    setPill("pill-db", s.db.ok ? "ok" : "bad", "DB", s.db.ok ? "pgvector" : "down");
+    setPill("pill-emb", s.embedding.ok ? "ok" : "bad", "EMB", s.embedding.model);
+    setPill("pill-llm", "warn", "LLM", `${s.llm.provider}:${s.llm.model}`);
+  } catch { setPill("pill-db", "bad", "STATUS", "조회 실패"); }
+}
+
+async function loadContext() {
+  try {
+    const c = await (await fetch("/chat/context")).json();
+    state.threshold = c.margin_threshold_pct;
+    state.catalog = c.catalog;
+    setPill("pill-gate", "warn", "GATE", `margin ≤ ${c.margin_threshold_pct}%`);
+    setPill("pill-asml", c.catalog ? "ok" : "bad", "FTPMODULE", c.catalog ? `${c.catalog.equipment.length}대` : "연결 실패");
+    $("tools").replaceChildren(...c.tools.map((t) => el("div", {class: "tool"},
+      el("code", null, t.signature),
+      t.writes_audit ? el("span", {class: "tag w"}, "기록") : null,
+      t.may_call_llm ? el("span", {class: "tag l"}, "RAG") : null,
+      el("p", null, t.description))));
+    if (c.catalog) {
+      const insert = (name) => el("button", {type: "button", class: "chip", onclick: () => insertToken(name)}, name);
+      $("names").replaceChildren(
+        el("div", {class: "grp"}, "설비"), el("div", {class: "chips"}, c.catalog.equipment.map(insert)),
+        ...Object.entries(c.catalog.parameters).flatMap(([d, names]) => [el("div", {class: "grp"}, `${d} 항목`), el("div", {class: "chips"}, names.map(insert))]),
+        el("p", {class: "note", style: "margin-top:9px"}, `기준 필터 ${Object.values(c.catalog.spec_filters).join(" / ")}`));
+    } else {
+      $("names").replaceChildren(el("p", {class: "errmsg"}, c.catalog_error || "ftpmodule 목록을 가져오지 못했습니다."));
+    }
+  } catch (e) {
+    $("names").replaceChildren(el("p", {class: "errmsg"}, `컨텍스트 조회 실패: ${e.message}`));
+  }
+}
+
+function insertToken(token) {
+  const ta = $("input");
+  ta.value += (ta.value && !/\s$/.test(ta.value) ? " " : "") + token;
+  ta.focus();
+}
+
+function renderScenario() {
+  $("examples").replaceChildren(...SCENARIO.map((s, i) => el("button", {type: "button", class: "ex", onclick: () => { if (!state.busy) { $("input").value = s.text; send(); } }},
+    el("i", null, String(i + 1).padStart(2, "0")), el("span", null, s.tag + (s.note ? " · " + s.note : "")), el("b", null, s.text))));
+}
+
+/* ---------- 결과 카드 ---------- */
+function card(cls, badge, titleParts, ...body) {
+  return el("article", {class: "card " + cls}, el("div", {class: "c-hd"}, badge, titleParts), ...body);
+}
+function head(title, sub, seconds) {
+  return [el("span", {class: "ti"}, title), sub ? el("span", {class: "sub"}, sub) : null, seconds != null ? el("span", {class: "time"}, `${fmt(seconds, 1)}s`) : null];
+}
+
+function gaugeNode(margin, threshold) {
+  const thr = threshold ?? 15;
+  const pos = (v) => `${Math.max(0, Math.min(100, (Number(v) + 100) / 2))}%`;
+  return el("div", null,
+    el("div", {class: "gauge"},
+      el("div", {class: "track"}, el("i", {class: "z-out", style: "width:50%"}), el("i", {class: "z-near", style: `width:${thr / 2}%`}), el("i", {class: "z-ok", style: `width:${50 - thr / 2}%`})),
+      el("span", {class: "thr", style: `left:${pos(thr)}`}), el("span", {class: "mark", style: `left:${pos(margin)}`})),
+    el("div", {class: "gauge-legend"}, el("span", null, "-100"), el("span", null, "0"), el("span", null, `임계 ${thr}`), el("span", null, "100")));
+}
+
+function llmNode(conclusion, action, confidence) {
+  const pct = confidence == null ? 0 : Math.round(Number(confidence) * 100);
+  return el("div", {class: "llm"},
+    el("div", {class: "llm-hd"}, "원인 설명 (RAG · LLM)", el("span", {class: "conf"}, `confidence ${confidence == null ? "-" : fmt(confidence)}`, el("i", {style: `--w:${pct}%`}))),
+    el("div", {class: "llm-bd"}, el("p", null, conclusion), action ? el("div", {class: "act"}, el("b", null, "권고"), action) : null));
+}
+
+function chunksNode(chunks, cited, label, open) {
+  const citedSet = new Set(cited || []);
+  const fold = el("details", {class: "fold", open: open && citedSet.size > 0},
+    el("summary", null, label || `근거 청크 · 인용 ${citedSet.size} / 검색 ${chunks.length}`));
+  const body = el("div", {class: "fold-bd"});
+  if (!chunks.length) body.append(el("p", {class: "note"}, "검색된 청크가 없습니다."));
+  for (const ch of chunks) {
+    const isCited = citedSet.has(ch.chunk_id);
+    body.append(el("div", {class: "chunk" + (isCited ? " cited" : "")},
+      el("div", {class: "chunk-hd"}, el("b", null, `#${ch.chunk_id}`),
+        cited ? (isCited ? el("span", {class: "cite"}, "LLM 인용") : el("span", null, "검색만 됨")) : null,
+        el("span", null, ch.feature_type), el("span", null, ch.equipment_id),
+        el("span", null, `${kst(ch.period_start)} ~ ${kst(ch.period_end).slice(11)} KST`),
+        ch.distance != null ? el("span", null, `거리 ${ch.distance}`) : null,
+        ch.error_codes?.length ? el("span", null, ch.error_codes.join(" ")) : null),
+      el("pre", null, ch.chunk_text)));
+  }
+  fold.append(body);
+  return fold;
+}
+
+function rawFold(obj) {
+  return el("details", {class: "fold"}, el("summary", null, "원본 JSON"), el("div", {class: "fold-bd"}, el("pre", null, JSON.stringify(obj, null, 2))));
+}
+
+function table(columns, rows) {
+  return el("div", {class: "tbl-wrap"}, el("table", null,
+    el("thead", null, el("tr", null, columns.map((c) => el("th", null, c.label)))),
+    el("tbody", null, rows.map((r) => el("tr", null, columns.map((c) => {
+      const v = c.render ? c.render(r) : r[c.key];
+      return el("td", {class: c.cls || ""}, v instanceof Node ? v : (v == null || v === "" ? "-" : String(v)));
+    }))))));
+}
+
+function renderSpecCheck(r) {
+  const d = r.data;
+  const out = d.determination === "OUT_OF_SPEC";
+  const near = !out && d.margin_pct <= d.threshold_pct;
+  const gate = d.judgement_id == null
+    ? el("div", {class: "gate skip"}, el("b", null, "RAG 생략"), ` — IN_SPEC, margin ${fmt(d.margin_pct)}% > 임계 ${d.threshold_pct}%. 판정만 기록`)
+    : d.conclusion == null
+      ? el("div", {class: "gate empty"}, el("b", null, "RAG 실행"), " — 근거 청크 0건이라 LLM 호출 생략")
+      : el("div", {class: "gate run"}, el("b", null, "RAG 실행"), ` — ${out ? "OUT_OF_SPEC" : `margin ${fmt(d.margin_pct)}% ≤ 임계 ${d.threshold_pct}%`} → 과거 사례 검색 + LLM 설명`);
+  const body = el("div", {class: "c-bd"},
+    el("div", {class: "measure"},
+      el("div", null, el("span", null, "측정값"), el("b", {class: out ? "out" : ""}, `${fmt(d.value, 4)} ${d.unit || ""}`), el("small", null, d.measured_at ? `측정 ${kst(d.measured_at)} KST` : "")),
+      el("div", null, el("span", null, `기준 (${d.spec_level || "-"})`), el("b", null, d.criterion_expression),
+        d.other_levels?.length ? el("small", null, d.other_levels.map((o) => `${o.spec_level}: ${o.expression}`).join(" · ")) : null),
+      el("div", null, el("span", null, "margin"), el("b", {class: out ? "out" : near ? "near" : "in"}, `${fmt(d.margin_pct)}%`), gaugeNode(d.margin_pct, d.threshold_pct))),
+    gate);
+  if (d.conclusion) body.append(llmNode(d.conclusion, d.recommended_action, d.confidence));
+  if (d.judgement_id != null) body.append(chunksNode(d.chunks, d.evidence_chunk_ids, null, true));
+  if (d.source) body.append(el("div", {class: "src"},
+    el("span", null, "anchor"), el("em", null, d.source.anchor), el("span", null, "spec"), el("em", null, d.source.spec),
+    el("span", null, "tag"), el("em", null, `${d.source.tag} · occurrence ${d.source.occurrence} · index ${d.source.index}`)));
+  body.append(rawFold(r));
+  return card(out ? "out" : "in", el("span", {class: "badge " + (out ? "out" : "in")}, d.determination),
+    head(`${d.parameter}`, `${d.equipment_id} · ${d.domain || d.feature} · check_spec`, r.elapsed_sec), body,
+    el("div", {class: "c-ft"}, el("span", null, "spec_evaluations ", el("em", null, `#${d.eval_id}`)), el("span", null, "judgements ", el("em", null, d.judgement_id != null ? `#${d.judgement_id}` : "없음"))));
+}
+
+function renderRag(r, title) {
+  const d = r.data;
+  const body = el("div", {class: "c-bd"});
+  if (d.error_dump_text) body.append(el("div", {class: "src"}, el("span", null, "입력"), el("em", null, d.error_dump_text), el("span", null, "출처"), el("em", null, d.dump_source === "ftpmodule" ? "ftpmodule dump item 요약" : "사용자 제공")));
+  if (d.feature_type) body.append(el("div", {class: "src"}, el("span", null, "검색 범위"), el("em", null, `feature_type=${d.feature_type} (${d.feature_reason})`)));
+  body.append(d.conclusion ? llmNode(d.conclusion, d.recommended_action, d.confidence)
+    : el("div", {class: "gate empty"}, el("b", null, "LLM 호출 생략"), " — 근거가 되는 과거 사례 청크가 없습니다(질의 기록만 저장)."));
+  body.append(chunksNode(d.chunks, d.evidence_chunk_ids, null, true), rawFold(r));
+  return card(d.conclusion ? "info" : "err", el("span", {class: "badge " + (d.conclusion ? "info" : "err")}, d.conclusion ? (r.kind === "root_cause" ? "ROOT CAUSE" : "HISTORY") : "근거 없음"),
+    head(title, `${d.equipment_id || "전체 설비"} · ${r.tool}`, r.elapsed_sec), body,
+    el("div", {class: "c-ft"}, el("span", null, "judgements ", el("em", null, `#${d.judgement_id}`))));
+}
+
+function renderResult(r) {
+  if (!r.ok) return card("err", el("span", {class: "badge err"}, "실패"), head(r.tool, JSON.stringify(r.args), r.elapsed_sec), el("div", {class: "c-bd"}, el("p", {class: "errmsg"}, r.error)));
+  const d = r.data;
+  switch (r.kind) {
+    case "spec_check": return renderSpecCheck(r);
+    case "root_cause": return renderRag(r, "ID Dump 원인 분석");
+    case "history": return renderRag(r, "이력 질의");
+    case "search":
+      return card("info", el("span", {class: "badge info"}, "SEARCH"), head("이력 청크 검색", `${r.args.equipment_id || "전체 설비"} · LLM 없음`, r.elapsed_sec),
+        el("div", {class: "c-bd"}, el("p", {class: "note"}, r.summary), chunksNode(d.chunks, null, `검색 결과 ${d.chunks.length}건`, false)));
+    case "values":
+      return card("info", el("span", {class: "badge info"}, "VALUES"), head(`${d.equipment_id} ${d.domain} 최신 값`, `${d.spec}`, r.elapsed_sec),
+        el("div", {class: "c-bd"},
+          table([{label: "항목", key: "record_name"}, {label: "값", cls: "num", render: (x) => fmt(x.value, 4)}, {label: "단위", key: "unit"}, {label: "기준식(판정 아님)", key: "criterion"}], d.values),
+          el("p", {class: "note"}, `측정 ${kst(d.measured_at)} KST · 원시값과 기준식만 표시합니다. 판정은 "○○ 판정해줘"로 check_spec을 실행해야 계산·기록됩니다.`)));
+    case "criteria":
+      return card("info", el("span", {class: "badge info"}, "CRITERIA"), head("판정 기준표", r.args.domain || "FOCAL · OVERLAY", r.elapsed_sec),
+        el("div", {class: "c-bd"}, table([{label: "domain", key: "domain"}, {label: "항목", key: "record_name"}, {label: "level", key: "spec_level"}, {label: "기준식", key: "expression"}, {label: "등록 level", render: (x) => x.levels.join(", ")}], d.rows)));
+    case "evaluations":
+      return card("info", el("span", {class: "badge info"}, "AUDIT"), head("저장된 판정 이력", r.summary.split(".")[0], r.elapsed_sec),
+        el("div", {class: "c-bd"}, d.rows.length ? table([
+          {label: "eval", render: (x) => `#${x.eval_id}`}, {label: "시각", render: (x) => kst(x.created_at)}, {label: "설비", key: "equipment_id"}, {label: "항목", key: "parameter"},
+          {label: "판정", render: (x) => el("span", {class: "det " + (x.determination === "OUT_OF_SPEC" ? "out" : "in")}, x.determination)},
+          {label: "margin", cls: "num", render: (x) => `${fmt(x.margin_pct)}%`}, {label: "RAG 결론", cls: "wrap", render: (x) => x.conclusion || (x.judgement_id ? "(근거 없음)" : "-")}], d.rows)
+          : el("p", {class: "note"}, "조건에 맞는 판정 이력이 없습니다.")));
+    case "equipment":
+      return card("info", el("span", {class: "badge info"}, "EQUIPMENT"), head("등록 설비", "ftpmodule /servers", r.elapsed_sec),
+        el("div", {class: "c-bd"}, el("div", {class: "chips"}, d.equipment.map((n) => el("button", {type: "button", class: "chip", onclick: () => insertToken(n)}, n))),
+          el("p", {class: "note"}, `기준 필터 ${Object.entries(d.spec_filters).map(([k, v]) => `${k}=${v}`).join(", ")}`)));
+    default:
+      return card("info", el("span", {class: "badge info"}, r.kind || r.tool), head(r.tool, "", r.elapsed_sec), el("div", {class: "c-bd"}, el("p", null, r.summary), rawFold(r)));
+  }
+}
+
+/* ---------- 턴 진행 ---------- */
+function describeCall(c) {
+  const a = c.args || {};
+  const parts = Object.entries(a).filter(([k]) => k !== "query" && k !== "error_dump_text").map(([, v]) => String(v));
+  if (a.query) parts.push(`"${a.query.length > 28 ? a.query.slice(0, 27) + "…" : a.query}"`);
+  return el("span", {class: "call"}, el("em", null, c.tool), parts.length ? `(${parts.join(", ")})` : "()");
+}
+
+function startTurn(message) {
+  $("welcome")?.remove();
+  $("log").append(el("div", {class: "turn user"}, el("div", {class: "u-msg"}, message)));
+  const started = performance.now();
+  const timeEl = el("span", {class: "time"}, "0.0s");
+  const planBox = el("div", {class: "plan"}, el("div", {class: "plan-row"}, el("span", {class: "spin"}), "계획 수립 중 — LLM이 사용할 도구를 고르는 중"));
+  const results = el("div", {class: "bot"});
+  const bot = el("div", {class: "turn"}, el("div", {class: "bot"}, el("div", {class: "who"}, el("b", null, "assistant"), timeEl), planBox, results));
+  $("log").append(bot);
+  scrollEnd();
+  const timer = setInterval(() => { timeEl.textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`; }, 100);
+  const pending = new Map();
+  return {
+    plan(ev) {
+      const rows = [el("div", {class: "plan-row"}, el("span", {class: "lbl"}, "계획"),
+        el("span", {class: "planner " + ev.planner}, ev.planner === "llm" ? "LLM" : ev.planner === "rule" ? "규칙" : "규칙(fallback)"),
+        ev.calls.length ? ev.calls.map(describeCall) : el("span", null, "도구 호출 없음"),
+        el("span", {class: "lbl", style: "margin-left:auto"}, `${fmt(ev.elapsed_sec, 1)}s`))];
+      if (ev.notes?.length) rows.push(el("ul", {class: "plan-notes"}, ev.notes.map((n) => el("li", null, n))));
+      planBox.replaceChildren(...rows);
+      scrollEnd();
+    },
+    toolStart(ev) {
+      const node = card("run", el("span", {class: "badge run"}, "실행 중"), head(ev.tool, Object.values(ev.args || {}).join(" · ")),
+        el("div", {class: "c-bd"}, el("div", {class: "pending"}, el("span", {class: "spin"}),
+          ["check_spec", "analyze_id_dump", "ask_history"].includes(ev.tool) ? "조회·판정 후 필요하면 과거 사례 RAG 설명 생성(로컬 llama3 1~2분)" : "조회 중")));
+      pending.set(ev.index, node);
+      results.append(node);
+      scrollEnd();
+    },
+    toolResult(ev) {
+      const node = renderResult(ev);
+      const old = pending.get(ev.index);
+      old ? old.replaceWith(node) : results.append(node);
+      scrollEnd();
+    },
+    final(ev) {
+      clearInterval(timer);
+      results.append(el("div", {class: "answer"}, el("div", {class: "lbl"}, "답변 (도구 결과로 조립)"), el("p", null, ev.reply)));
+      scrollEnd();
+    },
+    error(message) {
+      clearInterval(timer);
+      results.append(card("err", el("span", {class: "badge err"}, "오류"), head("대화 처리 실패"), el("div", {class: "c-bd"}, el("p", {class: "errmsg"}, message))));
+      scrollEnd();
+    },
+  };
+}
+
+async function send() {
+  const message = $("input").value.trim();
+  if (!message || state.busy) return;
+  state.busy = true;
+  $("send").disabled = true;
+  $("input").value = "";
+  const turn = startTurn(message);
+  let finalEvent = null;
+  try {
+    const resp = await fetch("/chat", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message, history: state.history.slice(-20)})});
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === "plan") turn.plan(ev);
+        else if (ev.type === "tool_start") turn.toolStart(ev);
+        else if (ev.type === "tool_result") turn.toolResult(ev);
+        else if (ev.type === "final") { finalEvent = ev; turn.final(ev); }
+        else if (ev.type === "error") turn.error(ev.message);
+      }
+    }
+    if (!finalEvent) turn.error("스트림이 답변 없이 끝났습니다.");
+  } catch (e) {
+    turn.error(e.message);
+  } finally {
+    state.history.push({role: "user", content: message});
+    state.history.push({role: "assistant", content: (finalEvent?.reply || "").slice(0, 600), calls: finalEvent?.calls || []});
+    state.busy = false;
+    $("send").disabled = false;
+    $("input").focus();
+  }
+}
+
+$("composer").addEventListener("submit", (e) => { e.preventDefault(); send(); });
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("clear").addEventListener("click", () => { if (state.busy) return; state.history = []; $("log").replaceChildren(); });
+
+renderScenario();
+loadStatus();
+loadContext();
+</script>
+</body>
+</html>

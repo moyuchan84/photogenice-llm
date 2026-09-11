@@ -6,12 +6,16 @@ residual의 absmax/3σ(ddof=1)를 쓰는 더 정교한 공식(interface.md "모�
 제공하지만, 그 공식 채택 여부는 부서 엔지니어 확인 후 결정한다 — 지금은 dx/dy(또는
 x/y) 원시 배열에 대한 단순 mean±3σ로 구현한다.
 
+spec에 "criterion" 키가 있으면 축 계산 없이 evaluate_criterion()으로 위임한다 —
+ftpmodule의 `/spec/map` 판정 기준이 LSL/USL이 아니라 operator/threshold 행으로
+내려오기 때문이며, 어떤 ftpmodule 값을 넣을지는 clients 계층 어댑터의 책임(TBD)이다.
+
 외부 의존성 없는 순수 함수만 포함한다(enforce-evaluator-purity.sh가 강제).
 """
 
 import statistics
 
-from rag.spec_evaluator import SpecResult, evaluate_spec
+from rag.spec_evaluator import SpecResult, evaluate_criterion, evaluate_spec
 
 
 def _axis_bounds(values: list[float]) -> tuple[float, float, dict]:
@@ -38,9 +42,14 @@ def _evaluate_axis(values: list[float], axis_spec: dict) -> tuple[SpecResult, di
 
 
 class FinalXYEvaluator:
-    """data={"x": [float, ...], "y": [float, ...]}, spec={"x": {"lsl","usl"}, "y": {...}}."""
+    """data={"x": [float, ...], "y": [float, ...]}, spec={"x": {"lsl","usl"}, "y": {...}}.
+
+    spec에 "criterion"이 있으면 evaluate_criterion()으로 위임한다(위 모듈 docstring 참고).
+    """
 
     def evaluate(self, data: dict, spec: dict) -> SpecResult:
+        if "criterion" in spec:
+            return evaluate_criterion(data, spec)
         x_result, x_metrics, x_bound = _evaluate_axis(data["x"], spec["x"])
         y_result, y_metrics, y_bound = _evaluate_axis(data["y"], spec["y"])
         metrics = {"x": x_metrics, "y": y_metrics}

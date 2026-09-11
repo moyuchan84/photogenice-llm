@@ -54,3 +54,26 @@ class IdDumpResponse(BaseModel):
     confidence: float | None
     recommended_action: str | None
     evidence_chunk_ids: list[int]
+
+
+# ---------------------------------------------------------------------------
+# /chat 탐색 인터페이스 (FR-7) — /query/* 와 분리된 라우터에서만 쓴다.
+# ---------------------------------------------------------------------------
+
+
+class ChatToolCallRef(BaseModel):
+    tool: str
+    args: dict = Field(default_factory=dict)
+
+
+class ChatHistoryMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(default="", max_length=4000)
+    # assistant 턴이 실제로 실행한 도구 호출 — 후속 질문("그럼 ROTATION_CH1은?")의
+    # 설비/기능 문맥을 이어받는 데 쓴다.
+    calls: list[ChatToolCallRef] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=40)

@@ -1,4 +1,5 @@
 from rag.evaluators.final_xy import FinalXYEvaluator
+from rag.spec_evaluator import evaluate_criterion
 
 _SPEC = {"x": {"lsl": -5.0, "usl": 5.0}, "y": {"lsl": -5.0, "usl": 5.0}}
 
@@ -38,3 +39,18 @@ def test_worse_axis_determines_overall_margin():
     result = FinalXYEvaluator().evaluate({"x": [0.0, 0.0, 0.0], "y": [10.0, 10.0, 10.0]}, _SPEC)
     assert result.determination == "OUT_OF_SPEC"
     assert result.margin_pct == -100.0
+
+
+def test_criterion_spec_dispatches_to_evaluate_criterion_instead_of_axis_bounds():
+    data = {"value": 4.0}
+    spec = {
+        "criterion": {
+            "operator": "<",
+            "threshold": 5.0,
+            "operator2": "",
+            "threshold2": None,
+            "is_absolute": False,
+        }
+    }
+    result = FinalXYEvaluator().evaluate(data, spec)
+    assert result == evaluate_criterion(data, spec)

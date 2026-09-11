@@ -1,0 +1,895 @@
+<!-- ASML RAG 검증 콘솔 — GET /verify 로 서빙된다 (api/routes_verify.py).
+     이 페이지는 실제 판정 엔드포인트(/query/*)를 그대로 호출하고, 응답과 DB 감사
+     레코드를 00-requirements.md의 FR/인수 기준에 매핑해 보여준다. 판정 계산은
+     전혀 하지 않는다 — 서버 응답을 검사만 한다. -->
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASML RAG 검증 콘솔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Martian+Mono:wdth,wght@75..112.5,300..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#0b0c0a; --panel:#121410; --panel-2:#181b15; --panel-3:#1e2219;
+  --rule:#272b20; --rule-hot:#3c4230;
+  --ink:#dcdfd2; --dim:#868d78; --faint:#5a6150;
+  --amber:#f0b323; --amber-deep:#a87a10; --amber-glow:rgba(240,179,35,.14);
+  --pass:#82c96f; --fail:#ff5f4d; --info:#5cc8d6; --pend:#6b7263;
+  --mono:'Martian Mono',ui-monospace,'Cascadia Mono',Consolas,monospace;
+  --sans:'Archivo','Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(var(--rule) 1px,transparent 1px),
+    linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:64px 64px;
+  background-position:-1px -1px;
+}
+body::before{
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:radial-gradient(ellipse 90% 60% at 50% -10%,var(--amber-glow),transparent 70%);
+}
+::selection{background:var(--amber);color:#0b0c0a}
+
+/* ---------- 상단 레일 ---------- */
+.rail{
+  position:sticky; top:0; z-index:40;
+  background:rgba(11,12,10,.93); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--rule-hot);
+}
+.rail::after{
+  content:''; position:absolute; left:0; bottom:-1px; height:1px; width:22%;
+  background:linear-gradient(90deg,transparent,var(--amber),transparent);
+  animation:scan 6s linear infinite;
+}
+@keyframes scan{0%{transform:translateX(-100%)}100%{transform:translateX(560%)}}
+.rail-in{max-width:1560px;margin:0 auto;padding:12px 24px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto}
+.brand h1{
+  margin:0; font-size:15px; letter-spacing:.16em; text-transform:uppercase;
+  font-variation-settings:'wdth' 110,'wght' 700; color:var(--ink);
+}
+.brand span{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.1em}
+.brand span b{color:var(--amber-deep);font-weight:400}
+
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{
+  font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+  border:1px solid var(--rule-hot); background:var(--panel);
+  padding:5px 9px; display:flex; gap:7px; align-items:center; white-space:nowrap;
+}
+.pill i{width:6px;height:6px;background:var(--pend);display:block;flex:none}
+.pill.ok i{background:var(--pass);box-shadow:0 0 7px var(--pass)}
+.pill.bad i{background:var(--fail);box-shadow:0 0 7px var(--fail)}
+.pill.warn i{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.pill b{color:var(--dim);font-weight:400}
+.pill em{font-style:normal;color:var(--ink)}
+
+.btn{
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  background:transparent; color:var(--ink); border:1px solid var(--rule-hot);
+  padding:7px 13px; cursor:pointer; transition:.14s;
+}
+.btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber);background:var(--amber-glow)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.primary{border-color:var(--amber-deep);color:var(--amber)}
+.btn.primary:hover:not(:disabled){background:var(--amber);color:#0b0c0a;border-color:var(--amber)}
+.btn.danger:hover:not(:disabled){border-color:var(--fail);color:var(--fail);background:transparent}
+
+/* ---------- 레이아웃 ---------- */
+.wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:26px 24px 96px;
+  display:grid;grid-template-columns:340px minmax(0,1fr);gap:26px;align-items:start}
+@media(max-width:1080px){.wrap{grid-template-columns:1fr}}
+
+/* ---------- 좌: 인수 기준 원장 ---------- */
+.ledger{position:sticky;top:76px;border:1px solid var(--rule-hot);background:var(--panel)}
+@media(max-width:1080px){.ledger{position:static}}
+.ledger-hd{padding:13px 15px;border-bottom:1px solid var(--rule)}
+.ledger-hd h2{margin:0;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  font-variation-settings:'wdth' 105,'wght' 700;color:var(--amber)}
+.ledger-hd p{margin:4px 0 0;font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.5}
+.tally{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--rule)}
+.tally div{padding:9px 6px;text-align:center;border-right:1px solid var(--rule)}
+.tally div:last-child{border-right:0}
+.tally b{display:block;font-family:var(--mono);font-size:19px;font-variation-settings:'wght' 600;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.tally span{font-family:var(--mono);font-size:9px;letter-spacing:.09em;color:var(--faint)}
+.tally .t-pass b{color:var(--pass)} .tally .t-fail b{color:var(--fail)} .tally .t-pend b{color:var(--pend)}
+.ledger-list{max-height:calc(100vh - 260px);overflow-y:auto}
+.lrow{display:flex;gap:10px;align-items:flex-start;padding:8px 15px;border-bottom:1px solid var(--rule);
+  cursor:pointer;transition:background .14s}
+.lrow:hover{background:var(--panel-2)}
+.lrow:last-child{border-bottom:0}
+.lamp{width:7px;height:7px;flex:none;margin-top:6px;background:var(--pend);transition:.2s}
+.lrow.pass .lamp{background:var(--pass);box-shadow:0 0 7px var(--pass)}
+.lrow.fail .lamp{background:var(--fail);box-shadow:0 0 7px var(--fail)}
+.lrow.run .lamp{background:var(--amber);animation:pulse 1s ease-in-out infinite}
+.lrow.na .lamp{background:transparent;border:1px solid var(--faint)}
+@keyframes pulse{50%{opacity:.25}}
+.lrow code{font-family:var(--mono);font-size:10px;color:var(--amber-deep);flex:none;width:56px;letter-spacing:-.02em}
+.lrow.pass code{color:var(--pass)} .lrow.fail code{color:var(--fail)}
+.lrow p{margin:0;font-size:12px;color:var(--dim);line-height:1.45}
+.lrow.na p{color:var(--faint)}
+
+/* ---------- 우: 프로브 스택 ---------- */
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.stack-hd{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  border:1px solid var(--rule-hot);background:var(--panel);padding:12px 15px}
+.stack-hd h2{margin:0 auto 0 0;font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  font-variation-settings:'wdth' 105,'wght' 700;color:var(--amber)}
+
+.probe{border:1px solid var(--rule-hot);background:var(--panel);position:relative;
+  opacity:0;animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.probe::before{content:'';position:absolute;left:-1px;top:-1px;bottom:-1px;width:2px;background:var(--rule-hot);transition:.25s}
+.probe.pass::before{background:var(--pass)}
+.probe.fail::before{background:var(--fail)}
+.probe.run::before{background:var(--amber);animation:pulse 1s ease-in-out infinite}
+
+.p-hd{display:flex;gap:13px;align-items:flex-start;padding:13px 16px}
+.p-no{font-family:var(--mono);font-size:11px;font-variation-settings:'wght' 600;color:var(--amber);
+  border:1px solid var(--rule-hot);padding:3px 7px;flex:none;letter-spacing:.02em}
+.p-ti{flex:1;min-width:0}
+.p-ti h3{margin:0;font-size:14px;font-variation-settings:'wdth' 102,'wght' 600;letter-spacing:.01em}
+.p-ti p{margin:3px 0 0;font-size:12px;color:var(--dim);line-height:1.5}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
+.tag{font-family:var(--mono);font-size:9px;letter-spacing:.05em;color:var(--faint);
+  border:1px solid var(--rule);padding:2px 6px}
+.p-act{display:flex;gap:7px;align-items:center;flex:none}
+.ms{font-family:var(--mono);font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+
+.p-body{border-top:1px solid var(--rule);display:none}
+.p-body.open{display:block}
+.sect{border-bottom:1px solid var(--rule)}
+.sect:last-child{border-bottom:0}
+.sect-hd{padding:8px 16px;font-family:var(--mono);font-size:9px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--faint);background:var(--panel-2);
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sect-hd .hint{text-transform:none;letter-spacing:.02em;color:var(--faint)}
+textarea{width:100%;border:0;border-top:1px solid var(--rule);background:var(--panel-3);color:var(--ink);
+  font-family:var(--mono);font-size:11px;line-height:1.65;padding:12px 16px;resize:vertical;min-height:104px;
+  outline:none;tab-size:2}
+textarea:focus{background:#20241a;box-shadow:inset 2px 0 0 var(--amber-deep)}
+
+.checks{list-style:none;margin:0;padding:0}
+.checks li{display:flex;gap:11px;align-items:flex-start;padding:9px 16px;border-bottom:1px solid var(--rule)}
+.checks li:last-child{border-bottom:0}
+.ck{font-family:var(--mono);font-size:10px;flex:none;width:15px;text-align:center;margin-top:1px}
+.ck.y{color:var(--pass)} .ck.n{color:var(--fail)}
+.checks .c-fr{font-family:var(--mono);font-size:9px;color:var(--amber-deep);flex:none;width:62px;margin-top:2px}
+.checks .c-tx{flex:1;min-width:0;font-size:12.5px}
+.checks .c-tx em{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--dim);
+  margin-top:3px;word-break:break-word}
+.checks li.no .c-tx{color:var(--fail)}
+
+pre{margin:0;padding:12px 16px;background:var(--panel-3);border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--dim);
+  max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+pre.err{color:var(--fail)}
+
+.readout{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--rule)}
+.ro{padding:9px 16px;border-right:1px solid var(--rule);min-width:128px;flex:1}
+.ro span{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--faint);text-transform:uppercase}
+.ro b{display:block;font-family:var(--mono);font-size:14px;font-variation-settings:'wght' 600;
+  font-variant-numeric:tabular-nums;margin-top:3px;word-break:break-all}
+.ro b.pass{color:var(--pass)} .ro b.fail{color:var(--fail)} .ro b.amber{color:var(--amber)}
+.ro b.dim{color:var(--faint);font-variation-settings:'wght' 400}
+
+.note{padding:10px 16px;font-size:12px;color:var(--dim);border-top:1px solid var(--rule);line-height:1.6}
+.note b{color:var(--amber);font-variation-settings:'wght' 600}
+.spin{display:inline-block;width:9px;font-family:var(--mono);color:var(--amber)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:var(--panel)}
+::-webkit-scrollbar-thumb{background:var(--rule-hot)}
+::-webkit-scrollbar-thumb:hover{background:var(--amber-deep)}
+</style>
+</head>
+<body>
+
+<header class="rail">
+  <div class="rail-in">
+    <div class="brand">
+      <h1>ASML RAG · 검증 콘솔</h1>
+      <span>00-requirements.md &nbsp;<b>§5 FR / §10 인수 기준</b>&nbsp; 실행 검증</span>
+    </div>
+    <div class="pills" id="pills"></div>
+    <a class="btn" href="/verify/chat" style="text-decoration:none">채팅 콘솔</a>
+    <button class="btn" id="btn-status">상태 갱신</button>
+    <button class="btn primary" id="btn-all">전체 실행</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <aside class="ledger">
+    <div class="ledger-hd">
+      <h2>인수 기준 원장</h2>
+      <p>프로브가 통과시킨 요구사항 항목</p>
+    </div>
+    <div class="tally">
+      <div class="t-pass"><b id="t-pass">0</b><span>통과</span></div>
+      <div class="t-fail"><b id="t-fail">0</b><span>실패</span></div>
+      <div class="t-pend"><b id="t-pend">0</b><span>미실행</span></div>
+    </div>
+    <div class="ledger-list" id="ledger"></div>
+  </aside>
+
+  <section class="stack">
+    <div class="stack-hd">
+      <h2>프로브</h2>
+      <button class="btn" id="btn-seed">데모 로그 시드</button>
+      <button class="btn danger" id="btn-reset">시드 정리</button>
+    </div>
+    <div id="probes"></div>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+/* ===========================================================================
+   요구사항 원장 — 00-requirements.md §5/§6/§10
+   state: 'na'(UI 검증 범위 밖) | 'pend' | 'run' | 'pass' | 'fail'
+   =========================================================================== */
+const LEDGER = [
+  ['FR-1.1',  '임베딩 워커가 embedded_at IS NULL 커서로 폴링'],
+  ['FR-1.2',  '워커 재실행 시 중복 임베딩 없음(멱등성)'],
+  ['FR-1.3',  '/query/history — 메타데이터 필터 + 벡터 검색 → 판정'],
+  ['FR-1.4',  '1회성 백필 스크립트 (CLI: scripts/backfill_embeddings.py)', 'na'],
+  ['FR-2.2',  'spec 판정은 LLM 없는 결정론적 순수 함수'],
+  ['FR-2.3',  'OOS 또는 margin ≤ 임계치일 때만 RAG 호출'],
+  ['FR-2.4',  'spec_evaluations 저장 + OOS 시 judgements 저장'],
+  ['FR-2.5',  'inline 경로 / identifier 경로 모두 지원'],
+  ['FR-3.1',  'Focal Curve / Final XY 전용 evaluator 결정론 계산'],
+  ['FR-3.2',  '요약 통계 metrics_json, 원본 배열 raw_data_json 저장'],
+  ['FR-3.3',  '확장 기능도 동일한 조건부 RAG 게이트 적용'],
+  ['FR-4.1',  'ID Dump — evaluator 없이 항상 RAG 호출'],
+  ['FR-4.2',  "검색 시 feature_type='id_dump' 필터 적용"],
+  ['FR-4.3',  '과거 원인 사례 judgements 시드 절차 (부서 실이력 대기)', 'na'],
+  ['FR-5.1',  'Feature Registry 등록만으로 기능 확장'],
+  ['FR-6.1',  '모든 판정/설명이 근거와 함께 DB에 저장'],
+  ['NFR-2',   '여유가 충분하면 LLM을 호출하지 않음(비용 효율)'],
+  ['FR-7.x',  'MCP /chat 탐색 인터페이스 (Session 20, 범위 밖)', 'na'],
+];
+
+/* 프로브 전반이 공유하는 컨텍스트 — P10 감사 readback이 앞선 프로브의 id를 물려받는다. */
+const CTX = { lastEvalId:null, lastJudgementId:null, lastChunkIds:[], status:null };
+
+const iso = (d) => new Date(d).toISOString();
+const nowISO = () => iso(Date.now() - 3600e3);
+
+async function api(path, opt) {
+  const res = await fetch(path, opt);
+  const text = await res.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  return { status: res.status, ok: res.ok, body };
+}
+const post = (path, payload) => api(path, {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: payload === undefined ? undefined : JSON.stringify(payload),
+});
+
+/* 체크 헬퍼 — {fr, label, ok, detail} */
+const chk = (fr, label, ok, detail) => ({ fr, label, ok: !!ok, detail: detail ?? '' });
+
+/* ===========================================================================
+   프로브 정의
+   payload가 있으면 편집 가능한 JSON 본문으로 노출되고, run(payload)에 전달된다.
+   run()은 { output, checks, readout? } 를 반환한다.
+   =========================================================================== */
+const PROBES = [
+
+{
+  id:'P1', title:'로그 적재 → 임베딩 동기화 → 재실행 멱등성',
+  desc:'데모 로그를 logs_raw에 넣고 실제 워커 함수를 1회 돌린 뒤, 곧바로 한 번 더 돌려 두 번째 사이클이 0건을 처리하는지 확인한다.',
+  frs:['FR-1.1','FR-1.2'], endpoint:'POST /verify/seed → /verify/sync ×2',
+  async run() {
+    const seed = await post('/verify/seed');
+    if (!seed.ok) return { output: seed.body, checks:[chk('FR-1.1','시드 삽입 성공', false, JSON.stringify(seed.body))] };
+    const before = await api('/verify/stats');
+    const s1 = await post('/verify/sync');
+    if (!s1.ok) return { output: s1.body, checks:[chk('FR-1.1','임베딩 동기화 사이클 실행', false, JSON.stringify(s1.body))] };
+    const s2 = await post('/verify/sync');
+    const after = await api('/verify/stats');
+
+    const seededFeatures = s1.body.seeded_chunks_by_feature || {};
+    const expected = seed.body.expected_feature_types || {};
+    const wantTypes = [...new Set(Object.values(expected))].sort();
+    const gotTypes = Object.keys(seededFeatures).sort();
+
+    return {
+      output: { seed: seed.body, cycle_1: s1.body, cycle_2: s2.body, stats_before: before.body, stats_after: after.body },
+      readout: [
+        ['미임베딩(시드 후)', before.body?.logs_raw?.unembedded ?? '—', 'amber'],
+        ['1차 처리 row', s1.body.processed_rows, 'pass'],
+        ['1차 생성 청크', s1.body.chunks_created, 'pass'],
+        ['2차 처리 row', s2.body?.processed_rows, s2.body?.processed_rows === 0 ? 'pass' : 'fail'],
+        ['2차 생성 청크', s2.body?.chunks_created, s2.body?.chunks_created === 0 ? 'pass' : 'fail'],
+      ],
+      checks: [
+        chk('FR-1.1','미임베딩 row를 찾아 처리했다', s1.body.processed_rows > 0,
+            `1차 사이클 처리 ${s1.body.processed_rows} row → 청크 ${s1.body.chunks_created}건 생성`),
+        chk('FR-1.1','처리 후 embedded_at 커서가 소진되었다', s1.body.unembedded_remaining === 0,
+            `잔여 미임베딩 ${s1.body.unembedded_remaining} row`),
+        chk('FR-1.2','2차 사이클이 0 row를 처리했다 (중복 임베딩 없음)',
+            s2.ok && s2.body.processed_rows === 0 && s2.body.chunks_created === 0,
+            `2차 사이클: 처리 ${s2.body?.processed_rows} row / 청크 증가 ${s2.body?.chunks_created}건`),
+        chk('FR-1.2','청크 총계가 2차 사이클 후에도 동일하다',
+            s1.body.chunks_after === s2.body?.chunks_after,
+            `1차 후 ${s1.body.chunks_after} → 2차 후 ${s2.body?.chunks_after}`),
+        chk('FR-4.2','시드 청크가 기능별 feature_type으로 분류되었다',
+            wantTypes.length > 0 && wantTypes.every(t => gotTypes.includes(t)),
+            `기대 ${wantTypes.join(', ')} / 실제 ${gotTypes.map(t=>`${t}(${seededFeatures[t]})`).join(', ') || '없음'}`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P2', title:'UC1 — /query/history 자연어 이력 질의',
+  desc:'질의 임베딩 → log_chunks 하이브리드 검색(feature_type=log_general + equipment_id 필터) → LLM 판정. 근거 chunk와 judgements 저장까지 확인한다.',
+  frs:['FR-1.3','FR-6.1'], endpoint:'POST /query/history',
+  payload:{ query:'노광량(dose) 편차로 롯트 진행이 보류된 적이 있나? 원인과 조치를 알려줘',
+            equipment_id:'VERIFY-ASML-04', top_k:5 },
+  async run(payload) {
+    const r = await post('/query/history', payload);
+    if (!r.ok) return { output:r.body, checks:[chk('FR-1.3','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastJudgementId = b.judgement_id;
+    CTX.lastChunkIds = b.evidence_chunk_ids || [];
+    return {
+      output: b,
+      readout: [
+        ['judgement_id', b.judgement_id, 'amber'],
+        ['근거 chunk', (b.evidence_chunk_ids||[]).length, (b.evidence_chunk_ids||[]).length ? 'pass':'fail'],
+        ['confidence', b.confidence ?? '—', 'dim'],
+      ],
+      checks: [
+        chk('FR-1.3','하이브리드 검색이 근거 chunk를 반환했다', (b.evidence_chunk_ids||[]).length > 0,
+            `chunk_ids = [${(b.evidence_chunk_ids||[]).join(', ')}]`),
+        chk('FR-1.3','LLM이 결론을 생성했다 (근거 0건이면 core.py가 LLM을 건너뛴다)', !!b.conclusion,
+            b.conclusion ? b.conclusion.slice(0,220) : 'conclusion=null — 근거 0건으로 LLM 호출을 건너뛴 상태'),
+        chk('FR-6.1','judgements에 감사 레코드가 저장되었다', Number.isInteger(b.judgement_id),
+            `judgement_id = ${b.judgement_id}`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P3', title:'UC2 — spec-check · IN_SPEC (여유 충분 → LLM 미호출)',
+  desc:'값이 스펙 중심 부근이라 margin_pct가 임계치를 크게 웃돈다. 판정만 즉시 반환되고 LLM/RAG는 호출되지 않아야 한다(judgement_id=null).',
+  frs:['FR-2.2','FR-2.3','NFR-2'], endpoint:'POST /query/spec-check',
+  payload:{ equipment_id:'VERIFY-ASML-04', parameter:'dose_mj', top_k:5,
+            inline_data:{ value:30.5, unit:'mJ/cm2', measured_at:'__NOW__' },
+            inline_spec:{ lsl:25.0, usl:35.0, target:30.0 } },
+  async run(payload) {
+    const t0 = performance.now();
+    const r = await post('/query/spec-check', payload);
+    const ms = performance.now() - t0;
+    if (!r.ok) return { output:r.body, checks:[chk('FR-2.2','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastEvalId = b.eval_id;
+    const thr = CTX.status?.tuning?.margin_threshold_pct;
+    return {
+      output: b,
+      readout: [
+        ['determination', b.determination, b.determination==='IN_SPEC'?'pass':'fail'],
+        ['margin_pct', b.margin_pct, 'amber'],
+        ['임계치', thr ?? '—', 'dim'],
+        ['judgement_id', b.judgement_id === null ? 'null (LLM 미호출)' : b.judgement_id,
+          b.judgement_id === null ? 'pass':'fail'],
+      ],
+      checks: [
+        chk('FR-2.2','결정론적 판정이 IN_SPEC을 반환했다', b.determination === 'IN_SPEC',
+            `value=30.5 / lsl=25 usl=35 → margin_pct=${b.margin_pct}`),
+        chk('FR-2.2','margin_pct가 계산식과 일치한다 ((1-|v-center|/half)*100)',
+            Math.abs(b.margin_pct - 90) < 0.01, `기대 90.0 · 실제 ${b.margin_pct}`),
+        chk('NFR-2','margin이 임계치를 넘으므로 LLM을 호출하지 않았다', b.judgement_id === null,
+            `margin ${b.margin_pct}% > 임계치 ${thr}% → judgement_id=${b.judgement_id} · 응답 ${ms.toFixed(0)}ms`),
+        chk('FR-2.3','설명 필드가 모두 비어 있다',
+            !b.conclusion && !b.recommended_action && !b.evidence_chunk_ids,
+            `conclusion=${b.conclusion} / evidence=${JSON.stringify(b.evidence_chunk_ids)}`),
+        chk('FR-2.4','판정은 IN_SPEC이어도 spec_evaluations에 저장되었다', Number.isInteger(b.eval_id),
+            `eval_id = ${b.eval_id}`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P4', title:'UC2 — spec-check · OUT_OF_SPEC (조건부 RAG 발동)',
+  desc:'값이 USL을 초과해 margin_pct가 음수가 된다. 결정론적 판정에 더해 RAG 원인가설/권고조치가 함께 반환되고 judgements에도 저장되어야 한다.',
+  frs:['FR-2.3','FR-2.4','FR-6.1'], endpoint:'POST /query/spec-check',
+  payload:{ equipment_id:'VERIFY-ASML-04', parameter:'dose_mj', top_k:5,
+            inline_data:{ value:36.2, unit:'mJ/cm2', measured_at:'__NOW__' },
+            inline_spec:{ lsl:25.0, usl:35.0, target:30.0 } },
+  async run(payload) {
+    const r = await post('/query/spec-check', payload);
+    if (!r.ok) return { output:r.body, checks:[chk('FR-2.3','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastEvalId = b.eval_id;
+    if (b.judgement_id) CTX.lastJudgementId = b.judgement_id;
+    return {
+      output: b,
+      readout: [
+        ['determination', b.determination, b.determination==='OUT_OF_SPEC'?'fail':'pass'],
+        ['margin_pct', b.margin_pct, 'fail'],
+        ['eval_id', b.eval_id, 'amber'],
+        ['judgement_id', b.judgement_id ?? 'null', b.judgement_id ? 'pass':'fail'],
+      ],
+      checks: [
+        chk('FR-2.2','결정론적 판정이 OUT_OF_SPEC을 반환했다', b.determination === 'OUT_OF_SPEC',
+            `value=36.2 > usl=35 → margin_pct=${b.margin_pct}`),
+        chk('FR-2.3','OOS이므로 RAG가 호출되었다', Number.isInteger(b.judgement_id),
+            `judgement_id = ${b.judgement_id}`),
+        chk('FR-2.3','근거 chunk가 함께 반환되었다', (b.evidence_chunk_ids||[]).length > 0,
+            `chunk_ids = [${(b.evidence_chunk_ids||[]).join(', ')}]`),
+        chk('FR-2.4','원인가설(conclusion)이 생성되었다', !!b.conclusion,
+            b.conclusion ? b.conclusion.slice(0,220) : 'null — 근거 0건이면 LLM을 건너뛴다(P1 시드/동기화 먼저 실행)'),
+        chk('FR-2.4','권고조치(recommended_action)가 생성되었다', !!b.recommended_action,
+            b.recommended_action ? b.recommended_action.slice(0,220) : 'null'),
+        chk('FR-6.1','spec_evaluations + judgements 양쪽에 저장되었다',
+            Number.isInteger(b.eval_id) && Number.isInteger(b.judgement_id),
+            `eval_id=${b.eval_id} / judgement_id=${b.judgement_id}`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P5', title:'Focal Curve — curve 배열 결정론 계산 + 조건부 RAG',
+  desc:'FocalCurveEvaluator가 curve의 range/sigma/DOF를 계산해 spec과 비교한다. 계산식 자체는 부서 확인 대기 중인 초안(TBD)이며, 여기서 검증하는 것은 "결정론적으로 계산되어 metrics_json에 남는가"이다.',
+  frs:['FR-3.1','FR-3.2','FR-3.3'], endpoint:'POST /query/focal-curve',
+  payload:{ equipment_id:'VERIFY-ASML-01', parameter:'focal_curve_range', top_k:5,
+            inline_data:{ curve:[12.0,18.5,31.2,44.8,39.1,22.4], unit:'nm', measured_at:'__NOW__' },
+            inline_spec:{ lsl:0.0, usl:25.0, target:0.0 } },
+  async run(payload) {
+    const r = await post('/query/focal-curve', payload);
+    if (!r.ok) return { output:r.body, checks:[chk('FR-3.1','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastEvalId = b.eval_id;
+    if (b.judgement_id) CTX.lastJudgementId = b.judgement_id;
+    const audit = await api(`/verify/audit/spec-evaluation/${b.eval_id}`);
+    const m = audit.body?.metrics_json || {};
+    const curve = payload.inline_data.curve;
+    const expectRange = Math.max(...curve) - Math.min(...curve);
+    return {
+      output: { response: b, spec_evaluations_row: audit.body },
+      readout: [
+        ['determination', b.determination, b.determination==='OUT_OF_SPEC'?'fail':'pass'],
+        ['range', m.range ?? '—', 'amber'],
+        ['sigma', typeof m.sigma === 'number' ? m.sigma.toFixed(4) : '—', 'dim'],
+        ['DOF', m.dof ?? '—', 'dim'],
+        ['judgement_id', b.judgement_id ?? 'null', b.judgement_id ? 'pass':'fail'],
+      ],
+      checks: [
+        chk('FR-3.1','evaluator가 range를 결정론적으로 계산했다',
+            typeof m.range === 'number' && Math.abs(m.range - expectRange) < 1e-9,
+            `기대 max-min = ${expectRange} · 실제 ${m.range}`),
+        chk('FR-3.1','sigma / DOF / n 이 함께 계산되었다',
+            typeof m.sigma === 'number' && typeof m.dof === 'number' && m.n === curve.length,
+            `sigma=${m.sigma} dof=${m.dof} n=${m.n}`),
+        chk('FR-3.2','metrics_json에 요약 통계가 저장되었다', Object.keys(m).length > 0,
+            JSON.stringify(m)),
+        chk('FR-3.2','raw_data_json에 원본 curve 배열이 보존되었다',
+            Array.isArray(audit.body?.raw_data_json?.curve) &&
+            audit.body.raw_data_json.curve.length === curve.length,
+            `raw_data_json.curve = ${JSON.stringify(audit.body?.raw_data_json?.curve)}`),
+        chk('FR-3.3','OOS이므로 RAG가 호출되었다 (UC2와 동일 게이트)', Number.isInteger(b.judgement_id),
+            `margin_pct=${b.margin_pct} → judgement_id=${b.judgement_id}`),
+        chk('FR-4.2','focal_curve 스코프로 검색된 근거가 있다', (b.evidence_chunk_ids||[]).length > 0,
+            `chunk_ids = [${(b.evidence_chunk_ids||[]).join(', ')}]`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P6', title:'Final XY — X/Y mean±3σ 결정론 계산',
+  desc:'FinalXYEvaluator가 축별 mean±3σ 경계를 구하고, 스펙 여유가 더 작은 축이 전체 판정을 좌우한다. 여기서는 X축이 이탈해 전체가 OUT_OF_SPEC이 되어야 한다.',
+  frs:['FR-3.1','FR-3.3'], endpoint:'POST /query/final-xy',
+  payload:{ equipment_id:'VERIFY-ASML-02', parameter:'final_xy', top_k:5,
+            inline_data:{ x:[1.2,-0.8,2.4,3.9,-1.5,2.8], y:[0.4,-0.6,1.1,-0.3,0.8,0.2], unit:'nm', measured_at:'__NOW__' },
+            inline_spec:{ x:{lsl:-5.0,usl:5.0}, y:{lsl:-5.0,usl:5.0} } },
+  async run(payload) {
+    const r = await post('/query/final-xy', payload);
+    if (!r.ok) return { output:r.body, checks:[chk('FR-3.1','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastEvalId = b.eval_id;
+    if (b.judgement_id) CTX.lastJudgementId = b.judgement_id;
+    const audit = await api(`/verify/audit/spec-evaluation/${b.eval_id}`);
+    const m = audit.body?.metrics_json || {};
+    const mean = a => a.reduce((s,v)=>s+v,0)/a.length;
+    const expectXMean = mean(payload.inline_data.x);
+    return {
+      output: { response: b, spec_evaluations_row: audit.body },
+      readout: [
+        ['determination', b.determination, b.determination==='OUT_OF_SPEC'?'fail':'pass'],
+        ['margin_pct', b.margin_pct, 'fail'],
+        ['X mean', typeof m.x?.mean === 'number' ? m.x.mean.toFixed(4) : '—', 'dim'],
+        ['X +3σ', typeof m.x?.upper_bound === 'number' ? m.x.upper_bound.toFixed(4) : '—', 'amber'],
+        ['Y +3σ', typeof m.y?.upper_bound === 'number' ? m.y.upper_bound.toFixed(4) : '—', 'dim'],
+      ],
+      checks: [
+        chk('FR-3.1','X축 mean이 정확히 계산되었다',
+            typeof m.x?.mean === 'number' && Math.abs(m.x.mean - expectXMean) < 1e-9,
+            `기대 ${expectXMean} · 실제 ${m.x?.mean}`),
+        chk('FR-3.1','축별 mean±3σ 경계가 metrics_json에 있다',
+            ['mean','sigma','lower_bound','upper_bound','n'].every(k => k in (m.x||{})) &&
+            ['mean','sigma','lower_bound','upper_bound','n'].every(k => k in (m.y||{})),
+            `x=${JSON.stringify(m.x)} / y=${JSON.stringify(m.y)}`),
+        chk('FR-3.1','여유가 더 작은 축(X)이 전체 판정을 좌우했다', b.determination === 'OUT_OF_SPEC',
+            `X +3σ=${m.x?.upper_bound?.toFixed?.(4)} (spec ±5) → ${b.determination}, margin_pct=${b.margin_pct}`),
+        chk('FR-3.3','OOS이므로 RAG가 호출되었다', Number.isInteger(b.judgement_id),
+            `judgement_id = ${b.judgement_id}`),
+        chk('FR-4.2','final_xy 스코프로 검색된 근거가 있다', (b.evidence_chunk_ids||[]).length > 0,
+            `chunk_ids = [${(b.evidence_chunk_ids||[]).join(', ')}]`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P7', title:'ID Dump — evaluator 없이 항상 RAG',
+  desc:'스펙 판정 없이 곧바로 feature_type=id_dump 스코프에서 과거 유사 사례를 검색해 원인을 추정한다. 검색 근거가 id_dump 청크로만 채워지는지 확인한다.',
+  frs:['FR-4.1','FR-4.2','FR-6.1'], endpoint:'POST /query/id-dump',
+  payload:{ equipment_id:'VERIFY-ASML-03', top_k:5,
+            error_dump_text:'DMP-4410 detector 채널 3번 신호 손실, scan_raw/scan_spec 페어 불일치, tdf 레코드 불완전' },
+  async run(payload) {
+    const r = await post('/query/id-dump', payload);
+    if (!r.ok) return { output:r.body, checks:[chk('FR-4.1','엔드포인트 200 응답', false, `HTTP ${r.status} · ${JSON.stringify(r.body)}`)] };
+    const b = r.body;
+    CTX.lastJudgementId = b.judgement_id;
+    const ids = b.evidence_chunk_ids || [];
+    const chunks = ids.length ? await api(`/verify/audit/chunks?ids=${ids.join(',')}`) : { body:{chunks:[]} };
+    const rows = chunks.body?.chunks || [];
+    const jud = await api(`/verify/audit/judgement/${b.judgement_id}`);
+    return {
+      output: { response: b, retrieved_chunks: rows, judgements_row: jud.body },
+      readout: [
+        ['judgement_id', b.judgement_id, 'amber'],
+        ['근거 chunk', ids.length, ids.length ? 'pass':'fail'],
+        ['feature_type', [...new Set(rows.map(c=>c.feature_type))].join(',') || '—',
+          rows.length && rows.every(c=>c.feature_type==='id_dump') ? 'pass':'fail'],
+        ['confidence', b.confidence ?? '—', 'dim'],
+      ],
+      checks: [
+        chk('FR-4.1','평가자 없이 곧바로 RAG가 실행되었다 (판정 필드 없음)',
+            Number.isInteger(b.judgement_id) && !('determination' in b),
+            `응답 키 = ${Object.keys(b).join(', ')}`),
+        chk('FR-4.2','검색된 근거가 전부 feature_type=id_dump 이다',
+            rows.length > 0 && rows.every(c => c.feature_type === 'id_dump'),
+            rows.length ? rows.map(c=>`#${c.chunk_id}:${c.feature_type}`).join(' · ') : '근거 0건 — P1 시드/동기화를 먼저 실행'),
+        chk('FR-4.1','과거 사례 기반 원인 추정이 생성되었다', !!b.conclusion,
+            b.conclusion ? b.conclusion.slice(0,220) : 'null — 근거 0건으로 LLM 호출을 건너뜀'),
+        chk('FR-6.1','judgements 레코드에 근거 chunk_id가 함께 남았다',
+            (jud.body?.retrieved_chunk_ids||[]).length > 0,
+            `use_case=${jud.body?.use_case} / feature_type=${jud.body?.feature_type} / retrieved=[${(jud.body?.retrieved_chunk_ids||[]).join(', ')}]`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P8', title:'입력 경로 분기 — inline vs identifier',
+  desc:'FR-2.5는 두 입력 경로를 요구한다. inline 경로는 P3~P6이 이미 통과시켰고, 여기서는 inline을 빼고 호출해 identifier 경로가 실제로 ASML API 어댑터로 분기하는지(미설정 시 503) 확인한다.',
+  frs:['FR-2.5'], endpoint:'POST /query/spec-check (inline 없이)',
+  payload:{ equipment_id:'VERIFY-ASML-04', parameter:'dose_mj', top_k:5 },
+  async run(payload) {
+    const r = await post('/query/spec-check', payload);
+    const configured = CTX.status?.asml_api_configured;
+    const routed503 = r.status === 503 && String(r.body?.detail||'').includes('ASML API');
+    return {
+      output: { http_status: r.status, body: r.body, asml_api_configured: configured },
+      readout: [
+        ['HTTP', r.status, r.ok ? 'pass' : (routed503 ? 'amber':'fail')],
+        ['ASML API 설정', configured ? '설정됨' : '미설정', configured ? 'pass':'dim'],
+      ],
+      checks: [
+        chk('FR-2.5','inline_data/inline_spec 경로가 동작한다 (P3~P6에서 확인)', true,
+            'inline 경로는 ASML API 없이도 판정까지 완주했다'),
+        configured
+          ? chk('FR-2.5','identifier 경로가 ASML API에서 data+spec을 조회했다', r.ok,
+                `HTTP ${r.status} · ${JSON.stringify(r.body).slice(0,220)}`)
+          : chk('FR-2.5','identifier 경로가 ASML API 어댑터로 분기했다 (미설정이라 503)', routed503,
+                `HTTP ${r.status} · ${r.body?.detail ?? JSON.stringify(r.body)} — 실제 조회 검증은 ASML_API_BASE 설정 후 가능(§11 TBD)`),
+      ],
+    };
+  },
+},
+
+{
+  id:'P9', title:'Feature Registry 확장성',
+  desc:'FEATURE_REGISTRY 항목마다 kind/evaluator/prompt_context/log_keywords가 채워져 있고, 대응하는 /query 라우트가 존재하는지 확인한다. 새 기능이 레지스트리 등록만으로 확장되는 구조인지의 런타임 증거다.',
+  frs:['FR-5.1'], endpoint:'GET /verify/status',
+  async run() {
+    const s = CTX.status || (await api('/verify/status')).body;
+    CTX.status = s;
+    const reg = s.registry || [];
+    const routes = s.query_routes || [];
+    const missing = reg.filter(e => !routes.some(r => r.endsWith('/query/' + e.feature_type.replace(/_/g,'-'))));
+    const badKind = reg.filter(e => e.kind === 'spec_check' ? !e.evaluator : e.evaluator !== null);
+    const noCtx = reg.filter(e => !e.has_prompt_context);
+    const noKw = reg.filter(e => !e.log_keywords.length);
+    return {
+      output: { registry: reg, query_routes: routes },
+      readout: [
+        ['등록 기능', reg.length, 'amber'],
+        ['/query 라우트', routes.length, 'dim'],
+        ['라우트 누락', missing.length, missing.length ? 'fail':'pass'],
+      ],
+      checks: [
+        chk('FR-5.1','레지스트리에 3개 기능이 등록되어 있다', reg.length >= 3,
+            reg.map(e=>`${e.feature_type}(${e.kind})`).join(' · ')),
+        chk('FR-5.1','kind와 evaluator 유무가 일치한다 (spec_check=평가자 있음 / root_cause=없음)',
+            badKind.length === 0,
+            reg.map(e=>`${e.feature_type} → ${e.evaluator ?? 'evaluator 없음'}`).join(' · ')),
+        chk('FR-5.1','모든 기능에 prompt_context(도메인 지식)가 등록되어 있다', noCtx.length === 0,
+            noCtx.length ? `누락: ${noCtx.map(e=>e.feature_type).join(', ')}` : '전 항목 등록됨'),
+        chk('FR-5.1','모든 기능에 log_keywords(적재 분류 어휘)가 등록되어 있다', noKw.length === 0,
+            noKw.length ? `누락: ${noKw.map(e=>e.feature_type).join(', ')} — 해당 기능의 검색이 항상 0건이 된다`
+                        : reg.map(e=>`${e.feature_type}:${e.log_keywords.length}개`).join(' · ')),
+        chk('FR-5.1','기능마다 대응하는 /query 라우트가 존재한다', missing.length === 0,
+            missing.length ? `누락: ${missing.map(e=>e.feature_type).join(', ')}` : routes.join(' · ')),
+      ],
+    };
+  },
+},
+
+{
+  id:'P10', title:'감사 추적 readback',
+  desc:'앞선 프로브가 만든 eval_id / judgement_id를 DB에서 다시 읽어, 판정 근거(원본 data/spec, 검색된 chunk_id, LLM 원문 응답)가 실제로 재현 가능한 형태로 남았는지 확인한다.',
+  frs:['FR-6.1'], endpoint:'GET /verify/audit/*',
+  async run() {
+    if (!CTX.lastEvalId && !CTX.lastJudgementId) {
+      return { output:{ note:'P3~P7을 먼저 실행하세요.' },
+               checks:[chk('FR-6.1','readback 대상 레코드 존재', false, '앞선 프로브가 만든 eval_id/judgement_id가 없습니다.')] };
+    }
+    const ev = CTX.lastEvalId ? await api(`/verify/audit/spec-evaluation/${CTX.lastEvalId}`) : null;
+    const ju = CTX.lastJudgementId ? await api(`/verify/audit/judgement/${CTX.lastJudgementId}`) : null;
+    const e = ev?.body, j = ju?.body;
+    const jIds = j?.retrieved_chunk_ids || [];
+    const chunks = jIds.length ? (await api(`/verify/audit/chunks?ids=${jIds.join(',')}`)).body?.chunks || [] : [];
+    return {
+      output: { spec_evaluations_row: e, judgements_row: j, evidence_chunks: chunks },
+      readout: [
+        ['eval_id', CTX.lastEvalId ?? '—', 'amber'],
+        ['judgement_id', CTX.lastJudgementId ?? '—', 'amber'],
+        ['근거 chunk 복원', chunks.length, chunks.length ? 'pass':'dim'],
+      ],
+      checks: [
+        chk('FR-6.1','spec_evaluations에 판정 + 원본 data/spec이 남았다',
+            !!e && !!e.determination && !!e.raw_data_json && !!e.raw_spec_json,
+            e ? `determination=${e.determination} margin_pct=${e.margin_pct} feature_type=${e.feature_type}` : '레코드 없음'),
+        chk('FR-6.1','judgements에 검색된 근거 chunk_id가 남았다', jIds.length > 0,
+            `retrieved_chunk_ids = [${jIds.join(', ')}]`),
+        chk('FR-6.1','LLM 원문 응답(raw_response)이 보존되었다', !!j?.raw_response,
+            j?.raw_response ? JSON.stringify(j.raw_response).slice(0,220) : '없음'),
+        chk('FR-6.1','근거 chunk 본문을 chunk_id로 다시 복원할 수 있다', chunks.length === jIds.length && chunks.length > 0,
+            chunks.length ? chunks.map(c=>`#${c.chunk_id}(${c.feature_type})`).join(' · ') : '복원 실패'),
+      ],
+    };
+  },
+},
+
+];
+
+/* ===========================================================================
+   렌더링
+   =========================================================================== */
+const $ = (s,r=document) => r.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if(cls) n.className = cls; if(html!==undefined) n.innerHTML = html; return n; };
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+const ledgerState = {};
+LEDGER.forEach(([id,,st]) => ledgerState[id] = st || 'pend');
+
+function renderLedger(){
+  const host = $('#ledger'); host.innerHTML = '';
+  LEDGER.forEach(([id, text], i) => {
+    const st = ledgerState[id];
+    const row = el('div', `lrow ${st}`);
+    row.style.animation = `rise .4s ${i*22}ms cubic-bezier(.2,.7,.3,1) backwards`;
+    row.innerHTML = `<i class="lamp"></i><code>${esc(id)}</code><p>${esc(text)}</p>`;
+    row.onclick = () => {
+      const p = PROBES.find(p => p.frs.includes(id));
+      if (p) $(`#probe-${p.id}`)?.scrollIntoView({block:'center'});
+    };
+    host.appendChild(row);
+  });
+  const vals = Object.entries(ledgerState).filter(([,v]) => v !== 'na').map(([,v]) => v);
+  $('#t-pass').textContent = vals.filter(v=>v==='pass').length;
+  $('#t-fail').textContent = vals.filter(v=>v==='fail').length;
+  $('#t-pend').textContent = vals.filter(v=>v==='pend'||v==='run').length;
+}
+
+function renderProbes(){
+  const host = $('#probes'); host.innerHTML = '';
+  PROBES.forEach((p, i) => {
+    const card = el('article', 'probe'); card.id = `probe-${p.id}`;
+    card.style.animationDelay = `${i*45}ms`;
+    card.innerHTML = `
+      <div class="p-hd">
+        <span class="p-no">${esc(p.id)}</span>
+        <div class="p-ti">
+          <h3>${esc(p.title)}</h3>
+          <p>${esc(p.desc)}</p>
+          <div class="tags">
+            <span class="tag">${esc(p.endpoint)}</span>
+            ${p.frs.map(f=>`<span class="tag">${esc(f)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="p-act">
+          <span class="ms" data-ms></span>
+          <button class="btn" data-run>실행</button>
+        </div>
+      </div>
+      <div class="p-body" data-body></div>`;
+    if (p.payload) {
+      const body = card.querySelector('[data-body]');
+      body.classList.add('open');
+      const sect = el('div','sect');
+      sect.innerHTML = `<div class="sect-hd"><span>요청 본문</span><span class="hint">편집 가능 · JSON</span></div>`;
+      const ta = el('textarea');
+      ta.value = JSON.stringify(p.payload, null, 2).replace(/"__NOW__"/g, `"${nowISO()}"`);
+      ta.spellcheck = false;
+      sect.appendChild(ta);
+      body.appendChild(sect);
+    }
+    card.querySelector('[data-run]').onclick = () => runProbe(p);
+    host.appendChild(card);
+  });
+}
+
+function setLedger(frs, state){
+  frs.forEach(f => { if (ledgerState[f] !== 'na') ledgerState[f] = state; });
+  renderLedger();
+}
+
+async function runProbe(p){
+  const card = $(`#probe-${p.id}`);
+  const btn = card.querySelector('[data-run]');
+  const msEl = card.querySelector('[data-ms]');
+  const body = card.querySelector('[data-body]');
+  const ta = card.querySelector('textarea');
+
+  card.className = 'probe run';
+  setLedger(p.frs, 'run');
+  btn.disabled = true; btn.textContent = '실행 중';
+  msEl.innerHTML = '<span class="spin">◴</span>';
+  const spin = ['◴','◷','◶','◵'];
+  let si = 0;
+  const timer = setInterval(() => { msEl.innerHTML = `<span class="spin">${spin[si++%4]}</span>`; }, 160);
+
+  // 이전 결과 섹션 제거 (요청 본문 섹션은 유지)
+  [...body.querySelectorAll('[data-result]')].forEach(n => n.remove());
+
+  const t0 = performance.now();
+  let result, fatal = null;
+  try {
+    let payload;
+    if (ta) {
+      try { payload = JSON.parse(ta.value); }
+      catch (e) { throw new Error(`요청 본문 JSON 파싱 실패: ${e.message}`); }
+    }
+    result = await p.run(payload);
+  } catch (e) {
+    fatal = e;
+    result = { output:{ error:String(e && e.stack || e) },
+               checks:[chk(p.frs[0], '프로브 실행', false, String(e && e.message || e))] };
+  }
+  clearInterval(timer);
+  const ms = performance.now() - t0;
+  msEl.textContent = ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms.toFixed(0)}ms`;
+  btn.disabled = false; btn.textContent = '재실행';
+
+  body.classList.add('open');
+
+  if (result.readout?.length) {
+    const s = el('div','sect'); s.setAttribute('data-result','');
+    s.innerHTML = `<div class="sect-hd"><span>판독</span></div>
+      <div class="readout">${result.readout.map(([k,v,tone]) =>
+        `<div class="ro"><span>${esc(k)}</span><b class="${tone||''}">${esc(v ?? '—')}</b></div>`).join('')}</div>`;
+    body.appendChild(s);
+  }
+
+  const s2 = el('div','sect'); s2.setAttribute('data-result','');
+  const passed = result.checks.filter(c=>c.ok).length;
+  s2.innerHTML = `<div class="sect-hd"><span>어서션</span><span class="hint">${passed}/${result.checks.length} 통과</span></div>
+    <ul class="checks">${result.checks.map(c =>
+      `<li class="${c.ok?'yes':'no'}"><span class="ck ${c.ok?'y':'n'}">${c.ok?'✓':'✕'}</span>
+       <span class="c-fr">${esc(c.fr)}</span>
+       <span class="c-tx">${esc(c.label)}${c.detail?`<em>${esc(c.detail)}</em>`:''}</span></li>`).join('')}</ul>`;
+  body.appendChild(s2);
+
+  const s3 = el('div','sect'); s3.setAttribute('data-result','');
+  s3.innerHTML = `<div class="sect-hd"><span>원문 응답 / DB 레코드</span></div>
+    <pre class="${fatal?'err':''}">${esc(JSON.stringify(result.output, null, 2))}</pre>`;
+  body.appendChild(s3);
+
+  const allOk = result.checks.length > 0 && result.checks.every(c => c.ok);
+  card.className = `probe ${allOk?'pass':'fail'}`;
+
+  // 원장 갱신 — 체크에 실제로 등장한 FR만 반영한다(프로브가 부수적으로 확인한 FR 포함).
+  const byFr = {};
+  result.checks.forEach(c => { byFr[c.fr] = (byFr[c.fr] ?? true) && c.ok; });
+  Object.entries(byFr).forEach(([fr, ok]) => {
+    if (ledgerState[fr] === 'na') return;
+    if (ok && ledgerState[fr] === 'fail') return;  // 한 번 실패한 항목은 실패로 유지
+    ledgerState[fr] = ok ? 'pass' : 'fail';
+  });
+  p.frs.forEach(f => { if (ledgerState[f] === 'run') ledgerState[f] = allOk ? 'pass' : 'fail'; });
+  renderLedger();
+  return allOk;
+}
+
+/* ---------- 상태 레일 ---------- */
+async function loadStatus(deep){
+  const pills = $('#pills');
+  pills.innerHTML = `<span class="pill"><i></i><b>상태</b><em>조회 중…</em></span>`;
+  const r = await api('/verify/status' + (deep ? '?deep=1' : ''));
+  if (!r.ok) { pills.innerHTML = `<span class="pill bad"><i></i><b>상태</b><em>HTTP ${r.status}</em></span>`; return; }
+  const s = r.body; CTX.status = s;
+
+  const stat = await api('/verify/stats');
+  const st = stat.body || {};
+  const chunkTotal = Object.values(st.log_chunks || {}).reduce((a,b)=>a+b,0);
+
+  const cls = v => v === true ? 'ok' : v === false ? 'bad' : 'warn';
+  pills.innerHTML = [
+    `<span class="pill ${cls(s.db.ok)}"><i></i><b>DB</b><em>${s.db.ok ? (s.db.pgvector?'pgvector ✓':'pgvector 없음') : '연결 실패'}</em></span>`,
+    `<span class="pill ${cls(s.embedding.ok)}"><i></i><b>EMBED</b><em>${esc(s.embedding.provider)}/${esc(s.embedding.model)}${s.embedding.dim?` · ${s.embedding.dim}d`:''}</em></span>`,
+    `<span class="pill ${cls(s.llm.ok)}"><i></i><b>LLM</b><em>${esc(s.llm.provider)}/${esc(s.llm.model)}</em></span>`,
+    `<span class="pill"><i class="${''}"></i><b>임계치</b><em>margin ≤ ${s.tuning.margin_threshold_pct}%</em></span>`,
+    `<span class="pill"><i></i><b>청크</b><em>${chunkTotal}건 · 미임베딩 ${st.logs_raw?.unembedded ?? '?'}</em></span>`,
+    `<span class="pill ${s.asml_api_configured?'ok':''}"><i></i><b>ASML API</b><em>${s.asml_api_configured?'설정됨':'미설정'}</em></span>`,
+  ].join('');
+
+  if (!s.embedding.ok) console.warn('embedding 실패:', s.embedding.error);
+  if (s.embedding.ok && s.embedding.dim_matches_schema === false)
+    console.warn(`임베딩 차원 ${s.embedding.dim} ≠ EMBEDDING_DIM ${s.tuning.embedding_dim} — log_chunks.embedding vector(1024)와 불일치`);
+}
+
+/* ---------- 상단 액션 ---------- */
+$('#btn-status').onclick = (e) => { e.target.disabled = true; loadStatus(true).finally(()=>{ e.target.disabled = false; }); };
+
+$('#btn-all').onclick = async (e) => {
+  e.target.disabled = true; e.target.textContent = '실행 중…';
+  for (const p of PROBES) { await runProbe(p); }
+  await loadStatus(false);
+  e.target.disabled = false; e.target.textContent = '전체 실행';
+};
+
+$('#btn-seed').onclick = async (e) => {
+  e.target.disabled = true;
+  const r = await post('/verify/seed');
+  alert(r.ok ? `시드 ${r.body.inserted}건 삽입됨. P1을 실행해 임베딩 동기화까지 진행하세요.`
+             : `실패: ${JSON.stringify(r.body)}`);
+  await loadStatus(false);
+  e.target.disabled = false;
+};
+
+$('#btn-reset').onclick = async (e) => {
+  e.target.disabled = true;
+  const r = await post('/verify/reset');
+  alert(r.ok ? `정리 완료:\n${JSON.stringify(r.body.deleted, null, 2)}` : `실패: ${JSON.stringify(r.body)}`);
+  CTX.lastEvalId = CTX.lastJudgementId = null;
+  await loadStatus(false);
+  e.target.disabled = false;
+};
+
+renderLedger();
+renderProbes();
+loadStatus(false);
+</script>
+</body>
+</html>

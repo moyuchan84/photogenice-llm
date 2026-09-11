@@ -6,18 +6,27 @@ ftpmodule의 focal 아이템(kind="field_curve")이 실제 입력 후보이나, 
 H·V 곡선을 curve로 선택할지는 아직 정해지지 않았다 — 그 선택은 이 evaluator의
 책임이 아니라 호출자(resolve_data_and_spec 등)의 책임이다.
 
+spec에 "criterion" 키가 있으면 curve 계산 없이 evaluate_criterion()으로 위임한다 —
+ftpmodule의 `/spec/map` 판정 기준이 LSL/USL이 아니라 operator/threshold 행으로
+내려오기 때문이며, 어떤 ftpmodule 값을 넣을지는 clients 계층 어댑터의 책임(TBD)이다.
+
 외부 의존성 없는 순수 함수만 포함한다(enforce-evaluator-purity.sh가 강제).
 """
 
 import statistics
 
-from rag.spec_evaluator import SpecResult, evaluate_spec
+from rag.spec_evaluator import SpecResult, evaluate_criterion, evaluate_spec
 
 
 class FocalCurveEvaluator:
-    """data={"curve": [float, ...]}, spec={"lsl": float, "usl": float}."""
+    """data={"curve": [float, ...]}, spec={"lsl": float, "usl": float}.
+
+    spec에 "criterion"이 있으면 evaluate_criterion()으로 위임한다(위 모듈 docstring 참고).
+    """
 
     def evaluate(self, data: dict, spec: dict) -> SpecResult:
+        if "criterion" in spec:
+            return evaluate_criterion(data, spec)
         curve = data["curve"]
         curve_range = max(curve) - min(curve)
         sigma = statistics.stdev(curve) if len(curve) >= 2 else 0.0

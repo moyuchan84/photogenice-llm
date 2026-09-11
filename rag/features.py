@@ -14,7 +14,7 @@ from datetime import datetime
 import asyncpg
 from fastapi import HTTPException
 
-from clients.asml_api_client import AsmlApiClient
+from clients.asml_api_client import AsmlApiClient, AsmlApiError, AsmlNotFoundError
 from clients.embedding_client import EmbeddingClient
 from clients.llm_client import LLMClient
 from config import Settings
@@ -135,13 +135,19 @@ async def resolve_data_and_spec(
             status_code=503,
             detail="ASML API가 설정되지 않았습니다 (ASML_API_BASE/ASML_API_KEY 확인 필요).",
         )
-    if feature_type == "generic":
-        return await asml_client.fetch_data_and_spec(
-            equipment_id=req.equipment_id, parameter=req.parameter
+    try:
+        if feature_type == "generic":
+            return await asml_client.fetch_data_and_spec(
+                equipment_id=req.equipment_id, parameter=req.parameter
+            )
+        return await asml_client.fetch_feature_data_and_spec(
+            feature_type=feature_type, equipment_id=req.equipment_id, parameter=req.parameter
         )
-    return await asml_client.fetch_feature_data_and_spec(
-        feature_type=feature_type, equipment_id=req.equipment_id, parameter=req.parameter
-    )
+    except AsmlNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AsmlApiError as exc:
+        # 부서 API 장애/응답 형식 문제는 우리 서버 오류(500)가 아니라 상류 오류로 알린다.
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 _FEATURE_LABELS = {

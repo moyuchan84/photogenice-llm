@@ -148,9 +148,17 @@ def classify_feature_type(
     """청크에 속한 로그의 message/error_code에서 키워드 히트 수가 가장 많은 feature_type을
     고른다. 히트가 0이면 UC1 기본값(log_general). 동점이면 feature_type 이름의 사전순으로
     끊어 같은 입력이 항상 같은 결과를 내도록 한다(재백필 시 분류가 흔들리면 안 됨)."""
+    return classify_text(
+        [part for r in rows for part in (r.message, r.error_code) if part], feature_keywords
+    )
+
+
+def classify_text(texts: Sequence[str], feature_keywords: Mapping[str, Sequence[str]]) -> str:
+    """classify_feature_type의 텍스트 버전 — 질의 문장을 적재 청크와 **같은 규칙**으로
+    분류해야 하는 호출자(/chat 이력 질의 등)가 쓴다. 규칙은 이 함수 한 곳에만 있다."""
     if not feature_keywords:
         return _DEFAULT_FEATURE_TYPE
-    haystack = " ".join(part.lower() for r in rows for part in (r.message, r.error_code) if part)
+    haystack = " ".join(t.lower() for t in texts if t)
     if not haystack:
         return _DEFAULT_FEATURE_TYPE
     ranked = sorted(

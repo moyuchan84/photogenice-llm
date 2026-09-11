@@ -217,6 +217,28 @@ async def test_resolve_data_and_spec_dispatches_to_feature_fetch_method():
 
 
 @pytest.mark.parametrize(
+    ("error_cls", "status_code"),
+    [("AsmlNotFoundError", 404), ("AsmlDataError", 502), ("AsmlUpstreamError", 502)],
+)
+async def test_resolve_data_and_spec_maps_asml_errors_to_http(error_cls, status_code):
+    from fastapi import HTTPException
+
+    import clients.asml_api_client as asml
+    from models.schemas import SpecCheckRequest
+
+    class _FailingAsmlClient:
+        async def fetch_feature_data_and_spec(self, *, feature_type, equipment_id, parameter):
+            raise getattr(asml, error_cls)("boom")
+
+    req = SpecCheckRequest(equipment_id="EQ-01", parameter="SCALE_CH1")
+    with pytest.raises(HTTPException) as exc_info:
+        await features.resolve_data_and_spec(
+            req, feature_type="focal_curve", asml_client=_FailingAsmlClient()
+        )
+    assert exc_info.value.status_code == status_code
+
+
+@pytest.mark.parametrize(
     ("raw", "expected"),
     [
         (

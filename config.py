@@ -35,9 +35,19 @@ class Settings(BaseSettings):
     internal_llm_api_key: str | None = None
     internal_llm_model: str = "gemma4-260430"
 
-    # --- ASML API (Phase 4에서 사용) ---
+    # --- ASML API = 부서 fleet(ftpmodule) 백엔드 ---
+    # ftpmodule API 자체는 인증이 없어 키는 선택이다(앞단 게이트웨이가 요구할 때만 설정).
     asml_api_base: str | None = None
     asml_api_key: str | None = None
+    # item 조립 source: cache = 부서 API가 우리 요청 때문에 설비 FTP에 접속하지 않음(스윕이
+    # 선수집한 세대만 사용). auto = 캐시에 없는 세대는 부서 API가 그 자리에서 FTP로 받음.
+    asml_item_source: Literal["cache", "auto"] = "cache"
+    # [TBD] ftpmodule servers 표에 line/model 컬럼이 없어 /spec/map 필터를 설정으로 고정한다.
+    asml_spec_line: str = "COMMON"
+    asml_spec_model: str = "EUV"
+    asml_spec_model_type: str = "ALL"
+    # 한 record_name에 spec_level별(no_update/update/verify) 기준이 여러 행일 때 판정에 쓸 단계
+    asml_spec_level: str = "verify"
 
     # --- 임베딩 동기화 워커 / 청킹 파라미터 ---
     embedding_sync_poll_interval_sec: int = 300
@@ -56,6 +66,20 @@ class Settings(BaseSettings):
     # 후보를 스윕한 결과 15%가 게이트 정확도 100%(다른 값은 88%)로 유일하게 전부
     # 일치했다 — 자세한 수치는 scripts/golden_set/last_run_report.json 참고.
     spec_check_margin_threshold_pct: float = 15.0
+
+    # --- 검증 콘솔(GET /verify) ---
+    # 요구사항 인수 기준을 로컬에서 확인하기 위한 개발용 UI. 데모 로그를 시드/삭제하는
+    # 쓰기 엔드포인트를 포함하므로(대상은 equipment_id가 'VERIFY-'로 시작하는 row로 한정)
+    # 운영 배포에서는 false로 꺼서 라우터 자체를 등록하지 않는다.
+    # 인증 없는 쓰기(seed/reset/sync) 엔드포인트가 있으므로 기본은 꺼짐 — 로컬 개발에서만 켠다.
+    verify_ui_enabled: bool = False
+
+    # --- /chat 탐색 인터페이스 (FR-7, Session 20) ---
+    # /query/* 와 분리된 라우터. LLM은 도구 호출 계획(JSON)만 만들고 서버가 검증 후 실행한다.
+    # 판정 기록을 만들고 ASML API를 호출하는 도구가 있고 인증이 없으므로 기본은 꺼짐.
+    chat_enabled: bool = False
+    chat_max_tool_calls: int = 4
+    chat_history_messages: int = 6
 
     # --- HTTP 클라이언트 공통 (httpx + tenacity) ---
     embedding_http_timeout_sec: float = 30.0

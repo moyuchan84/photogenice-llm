@@ -7,5 +7,9 @@ __pycache__/
 .env.local
 .claude/settings.local.json
 
+# 로컬 E2E(scripts/mock_fleet): ftpmodule 전용 venv와 그 앱이 지연 생성하는 로컬 아카이브
+.venv-fleet/
+.fleet_archive/
+
 # Cloned existing backend repo (ASML log parsing/API/scheduler) — separate git history, not part of this repo
 ftpmodule/

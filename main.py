@@ -40,3 +40,16 @@ app.include_router(spec_check_router)
 app.include_router(focal_curve_router)
 app.include_router(final_xy_router)
 app.include_router(id_dump_router)
+
+# /chat 탐색 인터페이스(FR-7) — /query/* 와 분리된 라우터로만 등록한다.
+if get_settings().chat_enabled:
+    from api.routes_chat import router as chat_router
+
+    app.include_router(chat_router)
+
+# 검증 콘솔(GET /verify)은 개발용이므로 설정으로 끌 수 있게 조건부 등록한다.
+# get_settings()는 lru_cache라 lifespan에서 읽는 것과 동일한 인스턴스다.
+if get_settings().verify_ui_enabled:
+    from api.routes_verify import router as verify_router
+
+    app.include_router(verify_router)

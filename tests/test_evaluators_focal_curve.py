@@ -1,4 +1,5 @@
 from rag.evaluators.focal_curve import FocalCurveEvaluator
+from rag.spec_evaluator import evaluate_criterion
 
 
 def test_range_exactly_at_usl_is_in_spec_with_zero_margin():
@@ -39,3 +40,18 @@ def test_sigma_computed_over_curve_points():
     result = FocalCurveEvaluator().evaluate({"curve": [0.0, 5.0, 10.0]}, {"lsl": 0.0, "usl": 20.0})
     assert result.metrics["dof"] == 2
     assert result.metrics["sigma"] > 0.0
+
+
+def test_criterion_spec_dispatches_to_evaluate_criterion_instead_of_curve_range():
+    data = {"value": 4.0}
+    spec = {
+        "criterion": {
+            "operator": "<",
+            "threshold": 5.0,
+            "operator2": "",
+            "threshold2": None,
+            "is_absolute": False,
+        }
+    }
+    result = FocalCurveEvaluator().evaluate(data, spec)
+    assert result == evaluate_criterion(data, spec)
