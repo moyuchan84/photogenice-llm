@@ -20,7 +20,7 @@
 | Phase 3 — UC2 Spec Evaluator | 결정론적 spec in/out 판정 로직 | Session 9 | `spec-check-conventions` 스킬, `spec-evaluator-tester`, evaluator 순수성 hook | ✅ 완료 |
 | Phase 4 — UC2 API 클라이언트 + RAG 결합 | ASML API 연동 및 조건부 RAG 호출 | Session 10~11 | `rag-core-builder` (재사용) | ✅ 완료 |
 | Phase 5 — 평가/튜닝 | 골든셋 기반 품질 평가, 임계치·프롬프트 튜닝 | Session 12 | — | ✅ 완료 |
-| Phase 6 — 기능 확장 (Focal Curve/Final XY/ID Dump) | Feature Registry 패턴으로 3개 기능 추가 | Session 13~19 | `/add-feature` 스킬, worktree 병렬 서브에이전트 | ⬜ 예정 |
+| Phase 6 — 기능 확장 (Focal Curve/Final XY/ID Dump) | Feature Registry 패턴으로 3개 기능 추가 | Session 13~19 | `/add-feature` 스킬, worktree 병렬 서브에이전트 | ✅ 완료 |
 | Phase 7 — MCP 탐색 인터페이스 (선택) | `/chat` 탐색형 에이전트 인터페이스 | Session 20 | `mcp-tool-builder`(신규 필요) | ⬜ 보류 (선택 사항, 조건부 착수) |
 | 상시 | 아키텍처 원칙 위반 여부 점검 | 각 Phase 종료 시점마다 | `code-reviewer` | 🔁 지속 |
 
@@ -86,13 +86,45 @@
   달성했다. 청킹 윈도우는 기존 기본값 5가 이미 최적임을 확인(변경 없음). 상세 수치는
   `scripts/golden_set/last_run_report.json` 참고.
 
-### Phase 6 — 기능 확장: Focal Curve / Final XY / ID Dump (Session 13~19)
+### Phase 6 — 기능 확장: Focal Curve / Final XY / ID Dump (Session 13~19) ✅ 완료
 
 - **목표**: Feature Registry 패턴으로 3개 기능을 동일한 구조로 스캐폴딩
 - **선행조건**: Phase 3(spec_check 패턴), Phase 2(root_cause 패턴, ID Dump용) 완료
-- **산출물**: `rag/features.py`(FEATURE_REGISTRY), `rag/evaluators/focal_curve.py`, `rag/evaluators/final_xy.py`, `rag/id_dump.py`, `models/schemas.py`(SpecCheckRequest), 각 기능 라우터 3개
-- **병렬화 포인트**: focal_curve/final_xy/id_dump는 서로 다른 파일만 건드리므로 `isolation: worktree` 서브에이전트로 병렬 진행 가능 (`claude-code-harness-guide.md` §2 참고)
-- **완료 기준**: 3개 기능 모두 Feature Registry 등록만으로 동작하며 `run_rag_judgement()`/`run_spec_check()` 본체가 수정되지 않았음을 `code-reviewer`가 확인 (FR-5.1)
+- **산출물**: `rag/features.py`(FEATURE_REGISTRY + `resolve_data_and_spec()` + 공용
+  `run_spec_check()`), `rag/evaluators/focal_curve.py`, `rag/evaluators/final_xy.py`,
+  `rag/id_dump.py`, `models/schemas.py`(SpecCheckRequest.inline_data/inline_spec,
+  IdDumpRequest/Response), `clients/asml_api_client.py::fetch_feature_data_and_spec()`,
+  `db/repo.py`(save_spec_evaluation에 metrics 파라미터 추가), 라우터 3개
+  (`api/routes_focal_curve.py`/`routes_final_xy.py`/`routes_id_dump.py`) + 기존
+  `api/routes_spec_check.py` 리팩터링(공용 함수 재사용), `main.py` 라우터 등록
+- **완료 기준**: 3개 기능 모두 Feature Registry 등록만으로 동작하며
+  `run_rag_judgement()`/`run_spec_check()` 본체가 수정되지 않았음을 확인 (FR-5.1) —
+  `run_spec_check()`는 이번에 처음으로 `rag/features.py`에 실제 공용 함수로
+  추출되어 `routes_spec_check.py`/`routes_focal_curve.py`/`routes_final_xy.py` 3개
+  라우터가 동일 로직을 재사용한다(이전에는 문서에만 존재하고 `routes_spec_check.py`에
+  인라인으로 복제돼 있었음 — Phase 3 완료 노트 참고)
+- **참고**: Session 13(스키마)은 착수 시점에 이미 최초 커밋(Session 1)부터 완료돼
+  있음이 확인됐다(`db/schema.sql`이 처음부터 `feature_type`/`metrics_json`을
+  포함). focal_curve/final_xy의 정확한 계산식과, identifier 기반(비-inline) 조회의
+  실제 ftpmodule 2-호출 계약(item 실행 + spec 페어링, equipment_id→서버 id 매핑)은
+  `00-requirements.md` §11에 여전히 TBD로 남아있다 — Phase 4의 ASML API 클라이언트와
+  동일한 선례(합리적으로 추정한 계약 + 격리된 파싱)를 따라 구현했으며, 부서 확인 후
+  해당 부분만 조정하면 된다. `judgements` 시드 데이터(ID Dump용 과거 원인 분석
+  이력)도 Phase 5 골든셋과 같은 사정으로 실제 부서 이력 확보 후 별도 작업.
+  단위테스트는 evaluator 경계값(`tests/test_evaluators_*.py`), 조건부 RAG 3케이스
+  (`tests/test_features.py`), 라우터 배선(`tests/test_routes_*.py`)까지 전부
+  DB/Ollama 없이 통과한다(`pytest tests/`).
+- **Phase 종료 시 `code-reviewer` 점검 결과(상시 항목)**: 아키텍처 원칙 6개(판정/설명
+  분리, 코어 무분기, 공용 함수 재사용, 조건부 RAG 게이트, 메타데이터 필터, 감사 저장)
+  위반 없음. 다만 두 건을 후속 수정했다 —
+  (1) `measured_at`이 JSON 문자열 그대로 asyncpg `timestamptz`로 전달돼 실 API/inline
+  첫 호출에서 `DataError` + 감사 레코드 유실이 나는 버그(`_coerce_measured_at()` 추가),
+  (2) chunker가 `feature_type`을 항상 `log_general`로 적재해 신규 3개 기능의 검색이
+  구조적으로 항상 0건이던 문제(Session 19.1 — `FEATURE_REGISTRY.log_keywords` +
+  `classify_feature_type()` + 근거 0건 시 LLM 호출 skip 가드).
+  미해결 후속: `_FEATURE_LABELS`/`_FEATURE_ENDPOINTS`/`"generic"` 특수분기 통합(4번째
+  feature 착수 전), `run_spec_check("id_dump")`의 `kind` 미검증, `_RETRYABLE`의 4xx
+  재시도, `pyproject.toml`의 `testpaths` 누락.
 
 ### Phase 7 — MCP 탐색 인터페이스 (선택, Session 20)
 
@@ -122,7 +154,7 @@
 - [x] Phase 3 — UC2 Spec Evaluator (판정/설명 분리 원칙 최초 구현)
 - [x] Phase 4 — UC2 API 클라이언트 + RAG 결합 (`/query/spec-check`)
 - [x] Phase 5 — 평가/튜닝
-- [ ] Phase 6 — Focal Curve / Final XY / ID Dump
+- [x] Phase 6 — Focal Curve / Final XY / ID Dump
 - [ ] Phase 7 — MCP 탐색 인터페이스 (선택, 조건부)
 
 > 이 체크리스트는 Phase 완료 시 직접 `[x]`로 갱신한다. 세션 단위의 더 세부적인 체크리스트는 `CLAUDE.md`의 "개발 순서" 섹션을 사용한다.

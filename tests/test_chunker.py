@@ -99,3 +99,79 @@ def test_log_level_case_insensitive():
     rows[2] = _row(2, 2, level="error", error_code="E1")
     chunks = chunk_logs(rows, session_gap_sec=600, error_window_before=1, error_window_after=1)
     assert chunks[0].error_codes == ["E1"]
+
+
+# --- feature_type 분류 (Phase 6 후속) -----------------------------------------
+# 검색은 항상 feature_type으로 필터링하므로(rag/retriever.py), 적재 시 분류가 붙지
+# 않으면 focal_curve/final_xy/id_dump 엔드포인트의 근거가 영구히 0건이 된다.
+
+FEATURE_KW = {
+    "focal_curve": ("focal", "focus", "dof"),
+    "final_xy": ("overlay", "c2c", "정렬"),
+    "id_dump": ("dump", "tdf", "detector"),
+}
+
+
+def test_no_keyword_map_keeps_default_feature_type():
+    chunks = chunk_logs([_row(0, 0, message="아무 로그")], **DEFAULT_KW)
+    assert chunks[0].feature_type == "log_general"
+
+
+def test_unmatched_message_falls_back_to_log_general():
+    chunks = chunk_logs(
+        [_row(0, 0, message="wafer 반송 완료")], **DEFAULT_KW, feature_keywords=FEATURE_KW
+    )
+    assert chunks[0].feature_type == "log_general"
+
+
+def test_message_keyword_selects_feature_type():
+    chunks = chunk_logs(
+        [_row(0, 0, message="focus offset drift 감지")], **DEFAULT_KW, feature_keywords=FEATURE_KW
+    )
+    assert chunks[0].feature_type == "focal_curve"
+
+
+def test_matching_is_case_insensitive():
+    chunks = chunk_logs(
+        [_row(0, 0, message="OVERLAY 편차 초과")], **DEFAULT_KW, feature_keywords=FEATURE_KW
+    )
+    assert chunks[0].feature_type == "final_xy"
+
+
+def test_error_code_also_contributes_to_classification():
+    rows = [_row(0, 0, level="ERROR", error_code="DUMP_READ_FAIL", message="처리 실패")]
+    chunks = chunk_logs(rows, **DEFAULT_KW, feature_keywords=FEATURE_KW)
+    assert chunks[0].feature_type == "id_dump"
+
+
+def test_highest_hit_count_wins_when_multiple_features_match():
+    rows = [
+        _row(0, 0, message="overlay 정렬 편차 발생"),  # final_xy 2히트
+        _row(1, 1, message="focus 재조정"),  # focal_curve 1히트
+    ]
+    chunks = chunk_logs(rows, **DEFAULT_KW, feature_keywords=FEATURE_KW)
+    assert chunks[0].feature_type == "final_xy"
+
+
+def test_tie_is_broken_deterministically_by_feature_name():
+    """동점이면 사전순으로 끊는다 — 재백필 시 같은 로그가 다른 feature_type으로
+    분류되면 검색 결과가 조용히 달라지기 때문."""
+    rows = [_row(0, 0, message="focus 측정 후 overlay 확인")]  # 각 1히트
+    chunks = chunk_logs(rows, **DEFAULT_KW, feature_keywords=FEATURE_KW)
+    assert chunks[0].feature_type == "final_xy"  # final_xy < focal_curve
+
+
+def test_classification_is_per_chunk_not_per_batch():
+    """한 배치 안에서도 청크마다 독립적으로 분류돼야 한다."""
+    rows = [
+        _row(0, 0, message="focus offset drift"),
+        _row(1, 500, message="overlay 정렬 실패"),  # 세션 분리
+    ]
+    chunks = chunk_logs(
+        rows,
+        session_gap_sec=60,
+        error_window_before=1,
+        error_window_after=1,
+        feature_keywords=FEATURE_KW,
+    )
+    assert [c.feature_type for c in chunks] == ["focal_curve", "final_xy"]

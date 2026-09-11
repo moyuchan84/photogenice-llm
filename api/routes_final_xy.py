@@ -1,7 +1,6 @@
-"""UC2: POST /query/spec-check — ASML API pull → 결정론적 spec 판정 → 조건부 RAG 설명
-(FR-2.1~2.4). 판정/저장/조건부 RAG 흐름은 rag/features.py::run_spec_check()에
-위임한다(feature_type="generic") — 이 로직을 여기에 인라인으로 복제하지 않는다
-(FR-5.1, Focal Curve/Final XY 라우터와 동일 함수를 재사용).
+"""Final XY — spec_check 패턴(FR-3). routes_spec_check.py와 동일하게
+rag/features.py의 공용 흐름을 feature_type="final_xy"로 재사용하는 얇은
+라우터다.
 """
 
 from fastapi import APIRouter
@@ -10,11 +9,11 @@ from api.deps import AsmlApiClientDep, DbPool, EmbeddingClientDep, LLMClientDep,
 from models.schemas import SpecCheckRequest, SpecCheckResponse
 from rag.features import resolve_data_and_spec, run_spec_check
 
-router = APIRouter(prefix="/query", tags=["spec-check"])
+router = APIRouter(prefix="/query", tags=["final-xy"])
 
 
-@router.post("/spec-check", response_model=SpecCheckResponse)
-async def query_spec_check(
+@router.post("/final-xy", response_model=SpecCheckResponse)
+async def query_final_xy(
     req: SpecCheckRequest,
     pool: DbPool,
     embedding_client: EmbeddingClientDep,
@@ -22,13 +21,13 @@ async def query_spec_check(
     asml_client: AsmlApiClientDep,
     settings: SettingsDep,
 ) -> SpecCheckResponse:
-    data, spec = await resolve_data_and_spec(req, feature_type="generic", asml_client=asml_client)
+    data, spec = await resolve_data_and_spec(req, feature_type="final_xy", asml_client=asml_client)
     outcome = await run_spec_check(
         pool,
         embedding_client,
         llm_client,
         settings,
-        feature_type="generic",
+        feature_type="final_xy",
         equipment_id=req.equipment_id,
         parameter=req.parameter,
         data=data,

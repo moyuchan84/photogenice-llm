@@ -60,6 +60,10 @@ app/
   api/
     routes_history.py        # UC1: POST /query/history
     routes_spec_check.py     # UC2: POST /query/spec-check
+    routes_chat.py           # FR-7: POST /chat (탐색용, /query/* 와 분리)
+  mcp_server/
+    tools.py                 # /chat 도구 레지스트리 — 기존 결정론적 함수 wrapping만
+    planner.py               # LLM JSON 계획 + 서버 검증 + 규칙 기반 fallback
   rag/
     core.py                  # run_rag_judgement() — UC1/UC2 공용
     retriever.py             # 하이브리드 검색 (pgvector + 메타데이터 필터)
@@ -133,14 +137,16 @@ SPEC_CHECK_MARGIN_THRESHOLD_PCT=10
 - [x] **Session 10**: `clients/asml_api_client.py` — ASML API 호출 어댑터 (타임아웃/재시도 포함)
 - [x] **Session 11**: `api/routes_spec_check.py` — UC2 엔드포인트, 조건부 RAG 호출 로직(Session 7 재사용), `spec_evaluations` 저장 확인
 - [x] **Session 12**: 평가 스크립트(`scripts/evaluate_golden_set.py`, `scripts/evaluate_chunk_window.py`) — 합성 골든셋(부서 실이력 TBD)으로 원인 가설 품질 측정, `margin_pct` 임계치 10%→15%/`top_k`=5/프롬프트 튜닝 확정. 상세: `00-requirements.md` §11.1, `02-roadmap.md` Phase 5
-- [ ] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션
-- [ ] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 골격 작성 (focal_curve/final_xy/id_dump 항목, prompt_context 초안). 착수 전 `ftpmodule`의 어느 item(`focal`/`overlay` 등)이 focal_curve/final_xy에 대응하는지 `ftpmodule/fleet/processing/parse/<item>/interface.md`로 확인
-- [ ] **Session 15**: `rag/evaluators/focal_curve.py` — curve 배열 range/sigma/DOF 계산 로직 + 유닛테스트
-- [ ] **Session 16**: `rag/evaluators/final_xy.py` — X/Y mean±3σ 계산 로직 + 유닛테스트
-- [ ] **Session 17**: `models/schemas.py`에 `SpecCheckRequest`(inline_data/inline_spec vs identifier 기반 조회) 추가, `resolve_data_and_spec()` 구현. identifier 기반 조회 경로는 `ftpmodule/README.api.md`의 item 실행(`/servers/{id}/items/{item}`) + `/spec/map` 두 호출 조합이 필요할 수 있음(위 "기존 백엔드 참고 자료" 참고)
-- [ ] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현, `judgements`에 시드 데이터(과거 원인 분석 이력) 채우기
-- [ ] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, Feature Registry 통해 공용 로직 호출 확인
-- [ ] **Session 20 (선택, UC1~7 안정화 이후)**: 사내 Gemma4-260430 API의 tool-calling 지원 여부 확인 → 지원 시 `mcp_server/tools.py` 구현(기존 결정론적 함수 wrapping) → `/chat` 탐색 엔드포인트 추가
+- [x] **Session 13**: `db/schema.sql`에 `feature_type`(spec_evaluations/log_chunks/judgements), `metrics_json`(spec_evaluations) 컬럼 추가 마이그레이션 — 실제로는 최초 커밋(Session 1)부터 이미 포함되어 있었음이 Phase 6 착수 시 확인됨(별도 작업 불필요)
+- [x] **Session 14**: `rag/features.py` — `FEATURE_REGISTRY` 작성(focal_curve/final_xy/id_dump 항목 + prompt_context) + `resolve_data_and_spec()` + 공용 `run_spec_check()`(순수성 훅 때문에 spec_evaluator.py가 아닌 이 파일이 소유). ftpmodule 매핑 확인 결과: focal_curve↔`focal`/`focalspec`, final_xy↔`overlay`/`overlayspec`, id_dump↔`dump`
+- [x] **Session 15**: `rag/evaluators/focal_curve.py` — curve 배열 range/sigma/DOF 계산 로직 + 유닛테스트(`tests/test_evaluators_focal_curve.py`). 정확한 계산식은 여전히 부서 확인 대기 중인 TBD — CLAUDE.md 초안 정의(range/sigma/DOF)를 그대로 구현
+- [x] **Session 16**: `rag/evaluators/final_xy.py` — X/Y mean±3σ 계산 로직 + 유닛테스트(`tests/test_evaluators_final_xy.py`). ftpmodule overlay의 10-파라미터 모델 적합 residual 공식은 더 정교한 대안으로 남겨둠(부서 확인 후 채택 여부 결정)
+- [x] **Session 17**: `models/schemas.py`에 `SpecCheckRequest.inline_data`/`inline_spec`, `IdDumpRequest`/`IdDumpResponse` 추가, `rag/features.py::resolve_data_and_spec()` 구현. identifier 기반 조회는 `clients/asml_api_client.py::fetch_feature_data_and_spec()`로 구현했으나 실제 ftpmodule 2-호출 계약(item 실행 + spec 페어링, equipment_id→서버 id 매핑)은 여전히 TBD — Phase 4와 동일하게 합리적으로 추정한 REST 엔드포인트로 파싱만 격리해둠
+- [x] **Session 18**: `rag/id_dump.py` — `run_id_dump_analysis()` 구현(+ `tests/test_id_dump.py`). `judgements` 시드 데이터 채우기는 부서 실제 원인 분석 이력 확보 후 별도 작업으로 남음(Phase 5의 골든셋과 동일 사정)
+- [x] **Session 19**: `api/routes_focal_curve.py`, `api/routes_final_xy.py`, `api/routes_id_dump.py` — 3개 엔드포인트, `rag/features.py`의 공용 `run_spec_check()`/`resolve_data_and_spec()`를 통해 로직 재사용 확인(`main.py`에 라우터 등록 완료). 기존 `api/routes_spec_check.py`도 동일 공용 함수로 리팩터링해 FR-5.1(본체 무수정) 요건을 실제로 만족시킴
+- [x] **Session 19.1 (Phase 6 후속, code-reviewer 지적)**: `log_chunks.feature_type` 적재 분류 배선 — 그동안 chunker가 모든 청크에 기본값 `log_general`만 붙여 신규 3개 기능의 검색이 **구조적으로 항상 0건**이었다. `FEATURE_REGISTRY`에 `log_keywords` 필드 + `build_log_keyword_map()`을 추가하고(새 기능은 여전히 레지스트리 항목만 추가), `workers/chunker.py::classify_feature_type()`(순수 함수, 키워드는 호출자 주입)로 청크별 분류, `embedding_sync_poller.py`에서 주입. 아울러 `rag/core.py`에 근거 0건 시 LLM 호출을 건너뛰고 `conclusion=None`으로 감사 레코드만 남기는 가드를 추가. 분류 키워드 어휘는 ftpmodule item 계약 문서에서 뽑은 추정값으로 여전히 TBD
+- [x] **Session 19.2 (ftpmodule 실계약 연동 + 로컬 E2E)**: `clients/asml_api_client.py`를 추정 REST에서 ftpmodule 실제 계약(`/spec/map` → `/servers` → `/servers/{id}/list` → `items/{focal|overlay}`의 `*_pairs` → `items/{focalspec|overlayspec}` tag_value, `source=cache`)으로 재구현. 판정은 operator/threshold 기준용 순수 함수 `rag/spec_evaluator.py::evaluate_criterion`(evaluator들이 `spec["criterion"]` 유무로 분기, 경계값 테스트 포함). 부서 API 오류는 404/502로 매핑. 로컬 검증은 `scripts/mock_fleet/README.md`(ftpmodule 무수정 기동 + fleet DB 목업 + logs_raw 이력 목업 + `run_e2e.py`). equipment_id↔servername, line/model/spec_level 설정 고정, "최신 세대" 선택, focal_curve=focalspec 값 판정 해석은 여전히 TBD
+- [x] **Session 20 (로컬 선행 구현, 사용자 요청으로 착수)**: `/chat` 탐색 엔드포인트(`api/routes_chat.py`, NDJSON 스트림, `/query/*`와 분리) + `mcp_server/tools.py`(8개 도구 — 기존 `run_spec_check`/`run_id_dump_analysis`/`run_rag_judgement`/`hybrid_search`/조회 함수 wrapping, MCP tool 정의 모양 `as_mcp_tool()`) + `mcp_server/planner.py`. **네이티브 tool-calling 대신 JSON 강제 출력 플래너**를 썼다 — 로컬 llama3는 Ollama tools 미지원이고 Gemma4 지원 여부(FR-7.3)도 미확인이라 어느 모델에서나 동작하게 하기 위함. LLM은 `{"calls":[{tool,args}]}`만 내고, 서버가 도구 스키마·ftpmodule 등록 설비/항목으로 검증한 호출만 실행하며, 깨진 계획은 결정론적 `fallback_plan`으로 대체한다. 답변 문장은 도구 결과로 조립하고 LLM이 계획과 함께 낸 문장은 버린다(수치 재서술 차단). UI는 `static/chat.html`(`GET /verify/chat`). code-reviewer 지적으로 추가된 안전장치: (1) 도구 없는 LLM 답은 숫자·판정/스펙 어휘가 없고 ftpmodule 목록 검증이 가능할 때만 허용 (2) `check_spec`의 feature(=판정 domain)는 문장/직전 문맥에 근거가 있을 때만 — FOCAL/OVERLAY 양쪽에 있는 항목명은 근거 없으면 되묻는다 (3) 사용자 문장에 없는 덤프 텍스트는 버리고, 이력 질의는 사용자 원문으로 고정 (4) 규칙 계획도 같은 검증 통과 (5) 스트림이 끊겨도 도구 실행은 `asyncio.shield`로 끝까지 — 반쪽 감사 기록 방지 (6) `CHAT_ENABLED`/`VERIFY_UI_ENABLED` 기본 false. **요구사항과 어긋나 결정이 필요한 점**: FR-7.2는 도구가 "조회·검색 wrapping만" 하도록 했지만 현재 `check_spec`/`analyze_id_dump`/`ask_history`는 기존 파이프라인을 호출해 새 판정·설명 기록을 만든다(`/chat`발 기록을 `/query/*`발과 구분하는 컬럼도 없음). 남은 것: 이 점의 요구사항 개정 여부, Gemma4 tool-calling 확인 후 네이티브 방식/실제 MCP 프로토콜 서버 노출 여부 결정
 
 ## 하지 말아야 할 것
 

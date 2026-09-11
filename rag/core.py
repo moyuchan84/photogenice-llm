@@ -13,6 +13,8 @@ from db.repo import save_judgement
 from rag.prompt import build_system_prompt, build_user_prompt
 from rag.retriever import RetrievedChunk, hybrid_search
 
+_NO_EVIDENCE_REASON = "검색된 과거 사례가 없어 LLM 설명 생성을 건너뛰었습니다."
+
 
 @dataclass(frozen=True)
 class RagJudgementResult:
@@ -50,6 +52,33 @@ async def run_rag_judgement(
         period_end=period_end,
         top_k=top_k,
     )
+
+    if not chunks:
+        # 근거가 0건이면 LLM을 호출하지 않는다 — 과거 사례 없이 생성된 conclusion은 근거
+        # 없는 단정이 되고, 그대로 judgements에 감사 기록으로 남는다. 판정 이력 자체는
+        # 생략하면 안 되므로(CLAUDE.md '감사 추적, 생략 금지') 근거 없음 상태를 명시한
+        # 레코드를 저장하고 반환한다. 호출자는 conclusion is None으로 이 경우를 구분한다.
+        judgement_id = await save_judgement(
+            pool,
+            use_case=use_case,
+            feature_type=feature_type,
+            equipment_id=equipment_id,
+            eval_id=eval_id,
+            query_text=query,
+            retrieved_chunk_ids=[],
+            conclusion=None,
+            confidence=0.0,
+            recommended_action=None,
+            raw_response={"skipped": True, "reason": _NO_EVIDENCE_REASON},
+        )
+        return RagJudgementResult(
+            judgement_id=judgement_id,
+            conclusion=None,
+            confidence=0.0,
+            recommended_action=None,
+            evidence_chunk_ids=[],
+            retrieved_chunks=[],
+        )
 
     system_prompt = build_system_prompt(prompt_context)
     user_prompt = build_user_prompt(query, chunks)
